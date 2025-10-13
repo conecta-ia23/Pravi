@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./backend:/app
+    env_file:
+      - ./backend/.env
+    networks:
+      - app-network
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.backend.rule=Host(`api-pravi.apptransmac.cloud`)
+      - traefik.http.routers.backend.entrypoints=websecure
+      - traefik.http.routers.backend.tls.certresolver=letsencrypt
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
+        VITE_WHATSAPP_API_URL: ${VITE_WHATSAPP_API_URL}
+        VITE_WHATSAPP_API_TOKEN: ${VITE_WHATSAPP_API_TOKEN}
+    depends_on:
+      - backend
+    networks:
+      - app-network
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.frontend.rule=Host(`pravi.apptransmac.cloud`)
+      - traefik.http.routers.frontend.entrypoints=websecure
+      - traefik.http.routers.frontend.tls.certresolver=letsencrypt  
+  
+networks:
+  app-network:
+    driver: bridge

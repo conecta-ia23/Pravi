@@ -1,0 +1,113 @@
+@import "tailwindcss";
+
+/* ====== Tema LIGHT (por defecto) ====== */
+:root {
+  /* Colores principales: yellow-400, yellow-500, black, white */
+  --bg-color:       #ffffff;   /* white - fondo app */
+  --card-bg:        #f7f7f7;   /* casi white - cards */
+  --text-color:     #000000;   /* black - texto */
+  --border-color:   #e0e0e0;   /* gris claro - bordes */
+  
+  /* Yellow palette */
+  --primary:        #facc15;   /* yellow-400 */
+  --secondary:      #eab308;   /* yellow-500 */
+  --accent:         #facc15;   /* yellow-400 */
+  
+  /* Semantic tokens */
+  --background: #ffffff;
+  --foreground: #000000;
+  --card: #f7f7f7;
+  --card-foreground: #000000;
+  --popover: #ffffff;
+  --popover-foreground: #000000;
+  --primary-foreground: #000000;
+  --secondary-foreground: #000000;
+  --accent-foreground: #000000;
+  --muted: #f7f7f7;
+  --muted-foreground: #000000;
+  --destructive: #ff4d4f;
+  --destructive-foreground: #ffffff;
+  --border: #e0e0e0;
+  --input: #e0e0e0;
+  --ring: #facc15;
+  --radius: 0.75rem;
+  
+  /* Charts */
+  --chart-1: #facc15;
+  --chart-2: #eab308;
+  --chart-3: #facc15;
+  --chart-4: #eab308;
+  --chart-5: #facc15;
+
+  /* Chat bubbles (LIGHT) */
+  --bubble-in: #f1f5f9;              /* gris muy claro para mensajes entrantes */
+  --bubble-in-foreground: #0f172a;   /* texto oscuro */
+  --bubble-out: #facc15;             /* amarillo saliente */
+  --bubble-out-foreground: #1a1a1a;  /* texto casi negro para contraste */
+  --bubble-muted: #94a3b8;           /* timestamp */
+}
+
+/* ====== Tema DARK (activa con .dark en <html>) ====== */
+.dark {
+  /* Colores principales (convertidos de HSL a HEX) */
+  --bg-color:       #000000;  /* 0 0% 0% */
+  --card-bg:        #121212;  /* casi black */
+  --text-color:     #ffffff;  /* 0 0% 100% */
+  --border-color:   #333333;  /* 0 0% 20% */
+  
+  /* Yellow palette (convertidos de HSL a HEX) */
+  --primary:        #ffc105;  /* 45 100% 51% */
+  --secondary:      #e7b008;  /* 45 93% 47% */
+  --accent:         #ffc105;  /* 45 100% 51% */
+  
+  /* Semantic tokens (convertidos de HSL a HEX) */
+  --background: #0d0d0d;      /* 0 0% 5%  */
+  --foreground: #ffffff;      /* 0 0% 100% */
+  --card: #141414;            /* 0 0% 8%  */
+  --card-foreground: #ffffff; /* 0 0% 100% */
+  --popover: #0d0d0d;         /* 0 0% 5%  */
+  --popover-foreground: #ffffff; /* 0 0% 100% */
+  --primary-foreground: #000000; /* 0 0% 0%  */
+  --secondary-foreground: #000000; /* 0 0% 0% */
+  --accent-foreground: #000000; /* 0 0% 0% */
+  --muted: #262626;           /* 0 0% 15% */
+  --muted-foreground: #a6a6a6;/* 0 0% 65% */
+  --destructive: #cf3030;     /* 0 62% 50% */
+  --destructive-foreground: #ffffff; /* 0 0% 100% */
+  --border: #333333;          /* 0 0% 20% */
+  --input: #333333;           /* 0 0% 20% */
+  --ring: #e7b008;            /* 45 93% 47% */
+  
+  /* Charts (convertidos de HSL a HEX) */
+  --chart-1: #e7b008;   /* 45 93% 47% */
+  --chart-2: #ffc105;   /* 45 100% 51% */
+  --chart-3: #4c4c4c;   /* 0 0% 30% */
+  --chart-4: #808080;   /* 0 0% 50% */
+  --chart-5: #b2b2b2;   /* 0 0% 70% */
+
+  /* Chat bubbles (DARK) */
+  --bubble-in: #374151;              /* gris pizarra para entrantes */
+  --bubble-in-foreground: #0f172a;   /* texto blanco */
+  --bubble-out: #facc15;             /* mismo amarillo (o usa #eab308 si prefieres) */
+  --bubble-out-foreground: #1a1a1a;  /* texto oscuro para legibilidad */
+  --bubble-muted: #9aa2ad;           /* timestamp */
+}
+
+/* Utilidades opcionales basadas en variables */
+.bg-app     { background-color: var(--bg-color); }
+.bg-card    { background-color: var(--card-bg); }
+.text-app   { color:            var(--text-color); }
+.border-app { border-color:     var(--border-color); }
+.bubble-in  { background-color: var(--bubble-in);  color: var(--bubble-in-foreground); }
+.bubble-out { background-color: var(--bubble-out); color: var(--bubble-out-foreground); }
+.text-muted { color: var(--bubble-muted); }
+
+/* Resets mínimos */
+html, body, #root { height: 100%; }
+
+* { border-color: var(--border); }
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+}
