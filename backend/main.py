@@ -22,7 +22,7 @@ app = FastAPI(title="VISOR-PRAVI API", version="1.0.0")
 # Configurar CORS para React
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],  # URL de tu app React
+    allow_origins=["http://localhost:3000", "http://localhost:5173", "https://pravi.apptransmac.cloud",],  # URL de tu app React
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
