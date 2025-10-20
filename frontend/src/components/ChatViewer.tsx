@@ -39,7 +39,7 @@ interface Message {
 interface ClientInfo {
   nombre: string;
   tipo_cliente?: string | null;
-  propiedad?: string | null;
+  categoria?: string | null;
 }
 
 export default function ChatViewer() {
@@ -68,7 +68,7 @@ export default function ChatViewer() {
 
   const [showEditNameModal, setShowEditNameModal] = useState(false)
   const [editingName, setEditingName] = useState("")
-  const [editingUbicacion, setEditingUbicacion] = useState("")
+  const [editingCategoria, setEditingCategoria] = useState("")
   const [editingTipoCliente, setEditingTipoCliente] = useState("")
 
   const [showNewChatModal, setShowNewChatModal] = useState(false)
@@ -317,7 +317,7 @@ export default function ChatViewer() {
           numero: activeSessionId,
           nombre: editingName.trim(),
           tipo_cliente: editingTipoCliente || undefined,
-          propiedad: editingUbicacion || undefined
+          categoria: editingCategoria || undefined
         };
         
         const { error } = await supabase
@@ -333,7 +333,7 @@ export default function ChatViewer() {
           [activeSessionId]: {
             nombre: editingName.trim(),
             tipo_cliente: editingTipoCliente || undefined,
-            propiedad: editingUbicacion || undefined
+            categoria: editingCategoria || undefined
           }
         }));
         
@@ -359,7 +359,7 @@ export default function ChatViewer() {
     if (showEditNameModal && activeSessionId) {
       setEditingName(clientsInfo[activeSessionId]?.nombre || "");
       setEditingTipoCliente(clientsInfo[activeSessionId]?.tipo_cliente || "");
-      setEditingUbicacion(clientsInfo[activeSessionId]?.propiedad || "");
+      setEditingCategoria(clientsInfo[activeSessionId]?.categoria || "");
     }
   }, [showEditNameModal, activeSessionId, clientsInfo]);
 
@@ -379,7 +379,7 @@ export default function ChatViewer() {
         table: table_records,
       },
       (payload) => {
-        const clientData = payload.new as {numero: string, nombre: string, tipo_cliente?: string, ubicacion?: string};
+        const clientData = payload.new as {numero: string, nombre: string, tipo_cliente?: string, Categoria?: string};
         
         // Actualizar la información del cliente en el estado
         if (clientData && clientData.numero) {
@@ -1157,12 +1157,12 @@ const handleSendMessage = async () => {
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-sm text-slate-300">Propiedad</label>
+                <label className="text-sm text-slate-300">categoria</label>
                 <input
                   className="w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 outline-none"
-                  value={editingUbicacion}
-                  onChange={(e) => setEditingUbicacion(e.target.value)}
-                  placeholder="Propiedad del cliente"
+                  value={editingCategoria}
+                  onChange={(e) => setEditingCategoria(e.target.value)}
+                  placeholder="categoria del cliente"
                 />
               </div>
             </div>
