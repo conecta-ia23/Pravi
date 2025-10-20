@@ -16,6 +16,7 @@ export default function Datos(){
     nombre: '',
     categoria: '',
     estilo: '',
+    seguimiento: '',
     calificacion: '',
     fechaInicio: '',
     fechaFin: ''
@@ -52,6 +53,7 @@ export default function Datos(){
       nombre: '',
       categoria: '',
       estilo: '',
+      seguimiento: '',
       calificacion: '',
       fechaInicio: '',
       fechaFin: ''
@@ -95,9 +97,22 @@ export default function Datos(){
           >
             <MenuItem value="">Todas</MenuItem>
             {/* Completa con tus categorías */}
-            <MenuItem value="Oficinas">Oficinas</MenuItem>
-            <MenuItem value="Comercial">Comercial</MenuItem>
-            <MenuItem value="Mobiliario">Mobiliario</MenuItem>
+            <MenuItem value="PRAVI Comercial">PRAVI Comercial</MenuItem>
+            <MenuItem value="PRAVI Express">PRAVI Express</MenuItem>
+          </Select>
+        </FormControl>
+        <FormControl size="small" sx={{ minWidth: 130 }}>
+          <InputLabel>Seguimiento</InputLabel>
+          <Select
+            label="Seguimiento"
+            value={filters.seguimiento}
+            onChange={e => onChangeFiltro('seguimiento', e.target.value)}
+          >
+            <MenuItem value="">Todas</MenuItem>
+            {/* Completa con seguimiento */}
+            <MenuItem value="Seguimiento">Seguimiento</MenuItem>
+            <MenuItem value="Agendado">Agendado</MenuItem>
+            <MenuItem value="No Cliente">No Cliente</MenuItem>
           </Select>
         </FormControl>
         <FormControl size="small" sx={{ minWidth: 130 }}>
@@ -113,6 +128,21 @@ export default function Datos(){
             <MenuItem value="Contemporaneo">Contemporaneo</MenuItem>
             <MenuItem value="Industrial">Industrial</MenuItem>
             <MenuItem value="Minimalista">Minimalista</MenuItem>
+          </Select>
+        </FormControl>
+        <FormControl size="small" sx={{ minWidth: 200 }}>
+          <InputLabel>Calificación</InputLabel>
+          <Select
+            label="Calificación"
+            value={filters.calificacion}
+            onChange={e => onChangeFiltro('calificacion', e.target.value)}
+          >
+            <MenuItem value="">Todas</MenuItem>
+            <MenuItem value="1: Cliente Frío">1: Cliente Frío</MenuItem>
+            <MenuItem value="2: Cliente Interesado">2: Cliente Interesado</MenuItem>
+            <MenuItem value="3: Cliente Potencial">3: Cliente Potencial</MenuItem>
+            <MenuItem value="4: Cliente Pre-Calificado">4: Cliente Pre-Calificado</MenuItem>
+            <MenuItem value="5: Cliente Calificado">5: Cliente Calificado</MenuItem>
           </Select>
         </FormControl>
 

@@ -28,7 +28,7 @@ class SupabaseManager:
         resp = await asyncio.to_thread(
             lambda: self.client.table(table).select("id", count="exact").execute()
         )
-        return len(resp.data) or 0
+        return resp.count or 0
 
     async def get_clients_page(
         self, page: int = 1, size: int = 50,
@@ -58,12 +58,44 @@ class SupabaseManager:
         return (resp.data or [None])[0]
 
     async def get_all_clients(self, table: str = "clients_pravi") -> List[Dict[str, Any]]:
-        resp = await asyncio.to_thread(
-            lambda: self.client.table(table)
-                              .select("*")
-                              .execute()
-        )
-        return resp.data or []
+        page_size = 1000
+        start = 0
+        out: List[Dict[str, Any]] = []
+        while True:
+            end = start + page_size -1
+            resp = await asyncio.to_thread(
+                lambda: self.client.table(table)
+                    .select("*")
+                    .order("ultima_interaccion", desc=True)
+                    .range(start, end)
+                    .execute()
+            )
+            chunk = resp.data or []
+            out.extend(chunk)
+            if len(chunk) < page_size:
+                break
+            start += page_size
+        return out
+
+    async def get_all_clients_allpages(self, table: str = "clients_pravi") -> List[Dict[str, Any]]:
+        page_size = 1000
+        start = 0
+        out: List[Dict[str, Any]] = []
+        while True:
+            end = start + page_size - 1
+            resp = await asyncio.to_thread(
+                lambda: self.client.table(table)
+                    .select("*")
+                    .order("ultima_interaccion", desc=True)
+                    .range(start, end)
+                    .execute()
+            )
+            chunk = resp.data or []
+            out.extend(chunk)
+            if len(chunk) < page_size:
+                break
+            start += page_size
+        return out
 
     #MODIFICAR PARA QUE USE FILTROS DE PRAVI
     async def get_clients_by_estile(self, estilo: str, table: str = "clients_pravi") -> List[Dict[str, Any]]:

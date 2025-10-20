@@ -40,7 +40,7 @@ class DashboardManager:
             "por_mes": DataProcessor.get_distribution(df, column="mes"),
             "calificacion": DataProcessor.get_qualification_distribution(df),
             "hora_contacto": DataProcessor.contact_hour_distribution(df),
-            "categoria_vs_estlo": DataProcessor.cross_distribution(df, row="categoria", col="estilo")
+            "categoria_vs_estilo": DataProcessor.cross_distribution(df, row="categoria", col="estilo")
         }
 
     async def get_filtered_metrics(self, filters: Dict[str, Any]) -> Dict[str, int]:
@@ -74,9 +74,24 @@ class DashboardManager:
 
     async def get_new_clients_this_month(self) -> int:
         df = await self._get_dataframe()
-        current_month = pd.Timestamp.now().month
-        current_year = pd.Timestamp.now().year
-        return df[(df["mes_num"] == current_month) & (df["año"] == current_year)].shape[0]
+        if df.empty or 'primera_interaccion' not in df.columns:
+            return 0
+
+        # Cómputo de mes en zona horaria Lima (sin cambiar tu pipeline global)
+        # Si tus timestamps son UTC-naive, ajustamos -5h para "simular" Lima.
+        # Si ya guardas en hora local, esto no dañará (solo desplaza si corresponde).
+        df = df.copy()
+        df['primera_interaccion_local'] = df['primera_interaccion'] - pd.Timedelta(hours=5)
+
+        now_lima = pd.Timestamp.now(tz='America/Lima')
+        mes = now_lima.month
+        anio = now_lima.year
+
+        mask = (
+            df['primera_interaccion_local'].dt.month.eq(mes) &
+            df['primera_interaccion_local'].dt.year.eq(anio)
+        )
+        return int(mask.sum())
 
     async def get_response_times(self) -> Dict[str, float]:
         df = await self._get_dataframe()

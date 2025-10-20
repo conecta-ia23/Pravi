@@ -85,6 +85,36 @@ export default function TableView({
       minWidth: 90,
       renderCell: (params) => formatDateTime(params.value)
     },
+    { field: 'seguimiento', headerName: 'Seguimiento', width: 100, minWidth: 70,
+      renderCell: (params) => {
+        let backgroundColor = 'white';
+        switch (params.value) {
+          case 'Agendado':
+            backgroundColor = '#4caf50'; // verde
+            break;
+          case 'Seguimiento':
+            backgroundColor = '#f44336'; // rojo
+            break;
+          case 'No Cliente':
+            backgroundColor = '#9e9e9e'; // gris
+            break;
+        }
+        return (
+          <Box 
+            sx={{ 
+              backgroundColor, 
+              width: '100%', 
+              height: '100%', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              borderRadius: 1 }}
+          >
+            {params.value}
+          </Box>
+        );
+      }
+    },
     { field: 'telefono', headerName: 'Teléfono', width: 95, minWidth: 85 },
     { field: 'nombre', headerName: 'Nombre', width: 90, minWidth: 80 },
     { field: 'calificacion', headerName: 'Cualificación', 
@@ -116,12 +146,13 @@ export default function TableView({
     } 
   },
     { field: 'categoria', headerName: 'Categoría', width: 85, minWidth: 75 },
-    { field: 'presupuesto', headerName: 'Presupuesto', width: 140, minWidth: 100 },
-    { field: 'toma_decision', headerName: 'Decisión', width: 140, minWidth: 100 },
+    { field: 'presupuesto', headerName: 'Presupuesto', width: 110, minWidth: 100 },
+    { field: 'toma_decision', headerName: 'Decisión', width: 100, minWidth: 75 },
     { field: 'estilo', headerName: 'Estilo', width: 85, minWidth: 75 },
     { field: 'tiempo', headerName: 'Tiempo', width: 90, minWidth: 80 },
-    { field: 'planos', headerName: 'Planos', width: 120, minWidth: 55 },
+    { field: 'planos', headerName: 'Planos', width: 100, minWidth: 55 },
     { field: 'cita', headerName: 'Fecha cita', width: 90, minWidth: 75 },
+    { field: 'correo', headerName: 'Correo', width: 85, minWidth: 70 },
     { 
       field: 'resumen', 
       headerName: 'Resumen', 
@@ -153,8 +184,6 @@ export default function TableView({
       align: 'center',
       headerAlign: 'center'
     },
-    { field: 'correo', headerName: 'Correo', width: 85, minWidth: 70 },
-    { field: 'seguimiento', headerName: 'Seguimiento', width: 85, minWidth: 70 }
   ];
 
   return (

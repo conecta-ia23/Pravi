@@ -94,10 +94,12 @@ class DataProcessor:
             if col in df.columns:
                 df[col] = pd.to_datetime(df[col], errors='coerce').dt.tz_localize(None)
 
+        if 'seguimiento' in df.columns:
+            df['seguimiento'] = df['seguimiento'].astype(str).str.strip()
         # Aplicar limpieza y actualización de seguimiento
         df = DataProcessor.limpiar_seguimiento(df)
         # Enriquecer con columnas derivadas
-        df = DataProcessor.add_derived_columns(df)        
+        df = DataProcessor.add_derived_columns(df)           
 
         return df
 
@@ -105,39 +107,65 @@ class DataProcessor:
     def filter_data(df: pd.DataFrame, filters: Optional[Dict[str, Any]] = None) -> pd.DataFrame:
         if df is None or df.empty:
             return pd.DataFrame()
-
-        if filters is None or not filters:
+        if not filters:
             return df
 
-        filtered_data = df.copy()
+        filtered = df.copy()
 
         month_map = {
             'Enero': 1, 'Febrero': 2, 'Marzo': 3, 'Abril': 4,
             'Mayo': 5, 'Junio': 6, 'Julio': 7, 'Agosto': 8,
             'Septiembre': 9, 'Octubre': 10, 'Noviembre': 11, 'Diciembre': 12
         }
+        mes_val = filters.get('mes')
+        if mes_val and mes_val != 'Todos':
+            if mes_val in month_map and 'mes_num' in filtered.columns:
+                filtered = filtered[filtered['mes_num'] == month_map[mes_val]]
+            elif 'mes' in filtered.columns:
+                filtered = filtered[filtered['mes'] == mes_val]
 
-        if 'mes' in filters and filters['mes'] != 'Todos':
-            if filters['mes'] in month_map:
-                filtered_data = filtered_data[filtered_data['mes_num'] == month_map[filters['mes']]]
-            elif filters['mes'] in filtered_data['mes'].values:
-                filtered_data = filtered_data[filtered_data['mes'] == filters['mes']]
-
-        if 'año' in filters and filters['año'] != 'Todos':
+        # año
+        anio_val = filters.get('año')
+        if anio_val and anio_val != 'Todos':
             try:
-                year = int(filters['año'])
-                filtered_data = filtered_data[filtered_data['año'] == year]
+                y = int(anio_val)
+                if 'año' in filtered.columns:
+                    filtered = filtered[filtered['año'] == y]
             except (ValueError, TypeError):
                 pass
 
-        if 'tipo_cliente' in filters and filters['tipo_cliente'] != 'Todos':
-            if 'tiene_cita' in filtered_data.columns:
-                if filters['tipo_cliente'] == 'Con cita':
-                    filtered_data = filtered_data[filtered_data['tiene_cita'] == True]
-                elif filters['tipo_cliente'] == 'Sin cita':
-                    filtered_data = filtered_data[filtered_data['tiene_cita'] == False]
+        # tipo_cliente
+        tipo = filters.get('tipo_cliente')
+        if tipo and tipo != 'Todos' and 'tiene_cita' in filtered.columns:
+            if tipo == 'Con cita':
+                filtered = filtered[filtered['tiene_cita'] == True]
+            elif tipo == 'Sin cita':
+                filtered = filtered[filtered['tiene_cita'] == False]
 
-        return filtered_data
+        # seguimiento (derivado) — comparación tolerante
+        seg = filters.get('seguimiento')
+        if seg and 'seguimiento' in filtered.columns:
+            wanted = str(seg).strip().lower()
+            col = filtered['seguimiento'].astype(str).str.strip().str.lower()
+            if wanted in {'agendado', 'seguimiento', 'no cliente'}:
+                filtered = filtered[col == wanted]
+
+        # calificación (derivada) — etiqueta exacta
+        cal = filters.get('calificacion')
+        if cal and 'calificacion' in filtered.columns:
+            wanted = str(cal).strip()
+            filtered = filtered[filtered['calificacion'] == wanted]
+
+        # calificación por nivel N:
+        cal_nivel = filters.get('calificacion_nivel')
+        if cal_nivel is not None and 'calificacion' in filtered.columns:
+            try:
+                prefix = f"{int(cal_nivel)}:"
+                filtered = filtered[filtered['calificacion'].astype(str).str.startswith(prefix)]
+            except (ValueError, TypeError):
+                pass
+
+        return filtered
 
     @staticmethod
     def get_client_counts(df: pd.DataFrame) -> Dict[str, int]:
@@ -190,16 +218,29 @@ class DataProcessor:
     
     @staticmethod
     def get_followup_success(df: pd.DataFrame) -> Dict[str, int]:
-        if df.empty or 'cita' not in df.columns or 'seguimiento' not in df.columns:
+        if df is None or df.empty:
             return {'followup_success': 0, 'no_followup': 0}
-        # Filtrar clientes que tienen cita registrada
-        citas_df = df[df['cita'].notnull()]
-        # Contar seguimiento exitoso
-        followup_success = (citas_df['seguimiento'].str.upper() == 'SI').sum()
-        no_followup = (citas_df['seguimiento'].str.upper() != 'SI').sum()
+
+        # Aseguramos la columna derivada
+        if 'tiene_cita' not in df.columns:
+            if 'cita' in df.columns:
+                df = df.copy()
+                df['tiene_cita'] = df['cita'].notnull()
+            else:
+                return {'followup_success': 0, 'no_followup': 0}
+
+        # Éxito: con cita (equivale a 'Agendado' en tu limpieza)
+        followup_success = int((df['tiene_cita'] == True).sum())
+
+        # En seguimiento activo sin cita
+        if 'seguimiento' in df.columns:
+            no_followup = int(((df['tiene_cita'] == False) & (df['seguimiento'] == 'Seguimiento')).sum())
+        else:
+            no_followup = 0
+
         return {
-            'followup_success': int(followup_success),
-            'no_followup': int(no_followup)
+            'followup_success': followup_success,
+            'no_followup': no_followup
         }
 
     @staticmethod
@@ -229,8 +270,6 @@ class DataProcessor:
             return 'No Cliente'
 
         df['seguimiento'] = df.apply(actualizar_seguimiento, axis=1)
-
-        # Puedes dejar fuera la asignación del color aquí porque será en frontend
 
         return df
 
