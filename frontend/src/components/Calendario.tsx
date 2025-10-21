@@ -24,7 +24,7 @@ const Calendario = () => {
     // 👉 Aquí se puede conectar con n8n/Supabase en el futuro
    async function fetchEvents() {
       const { data, error } = await supabase
-        .from('clients')
+        .from('clients_pravi')
         .select('id, nombre, cita, tipo_cliente')
         .not('cita', 'is', null);
         
