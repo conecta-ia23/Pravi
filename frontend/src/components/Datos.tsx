@@ -97,7 +97,7 @@ export default function Datos(){
           >
             <MenuItem value="">Todas</MenuItem>
             {/* Completa con tus categorías */}
-            <MenuItem value="PRAVI Comercial">PRAVI Comercial</MenuItem>
+            <MenuItem value="PRAVI Tradicional">PRAVI Tradicional</MenuItem>
             <MenuItem value="PRAVI Express">PRAVI Express</MenuItem>
           </Select>
         </FormControl>

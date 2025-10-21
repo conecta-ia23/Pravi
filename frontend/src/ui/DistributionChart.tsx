@@ -16,7 +16,7 @@ import {
   Typography,
   CircularProgress
 } from '@mui/material';
-
+const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
 
 interface RawCrossData {
@@ -32,7 +32,7 @@ export const DistributionChart: React.FC = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const response = await fetch('http://localhost:8000/dashboard/cross', {
+        const response = await fetch(`${BASE_URL}/dashboard/cross`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ col1: 'categoria', col2: 'id' }),

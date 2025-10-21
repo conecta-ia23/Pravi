@@ -26,6 +26,9 @@ class DashboardManager:
         "total_clientes": int(len(df)),
         "con_cita": int(df["tiene_cita"].sum()),
         "sin_cita": int(len(df) - df["tiene_cita"].sum()),
+        "con_estilo": int(df["estilo"].notna().sum()),
+        "calificados": int(df["calificacion"].notna().sum()),
+        "seguimiento": int((df["seguimiento"] == "Seguimiento").sum()),
         }
 
 

@@ -27,8 +27,8 @@ export default function FollowupChart() {
     fetchDashboardFollowup()
       .then((res) => {
         const chartData = [
-          { name: "Con seguimiento", value: res.followup_success },
-          { name: "Sin seguimiento", value: res.no_followup },
+          { name: "Agendados(con cita)", value: res.followup_success },
+          { name: "En seguimiento(sin cita)", value: res.no_followup },
         ];
         setData(chartData);
       })

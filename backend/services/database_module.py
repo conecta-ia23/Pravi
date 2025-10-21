@@ -64,7 +64,6 @@ class DataProcessor:
     def transform_data(supabase_data: List[Dict[str, Any]]) -> pd.DataFrame:
         transformed_data = []
         for item in supabase_data:
-            try:
                 transformed_data.append({
                     "id": item.get("id"),
                     "primera_interaccion": item.get('primera_interaccion', ''),
@@ -86,8 +85,6 @@ class DataProcessor:
                     "ultimo_seguimiento": item.get('ultimo_seguimiento', None),  # añadir si falta
                     "tipo_cliente": item.get('tipo_cliente', ''),
                 })
-            except Exception as e:
-                print(f"Error transformando fila: {str(e)}")
         df = pd.DataFrame(transformed_data)
         # Convertir campos de fecha si vienen en texto
         for col in ['primera_interaccion', 'ultima_interaccion', 'cita', 'ultimo_seguimiento']:

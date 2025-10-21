@@ -45,15 +45,15 @@ export default function DashboardFaseBarChart() {
 
   const fasesData = [
     { name: "Calificados", value: metrics.calificados },
-    { name: "Atendidos", value: metrics.atendidos },
-    { name: "Reservados", value: metrics.reservados },
-    { name: "Vendidos", value: metrics.vendidos }
+    { name: "Con Estilos", value: metrics.con_estilo },
+    { name: "Sin Cita", value: metrics.sin_cita },
+    { name: "Seguimiento", value: metrics.seguimiento }
   ];
 
   return (
     <Card elevation={3}>
       <CardContent>
-        <Typography variant="h6" gutterBottom>Distribución por Fase</Typography>
+        <Typography variant="h6" gutterBottom>Métricas Comparativas</Typography>
         <ResponsiveContainer width="100%" height={242}>
           <BarChart data={fasesData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" />
