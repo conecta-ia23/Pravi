@@ -1,0 +1,50 @@
+.fc .fc-toolbar .fc-button {
+  font-size: 0.9rem;
+  padding: 3px 8px;
+  min-width: unset;
+  height: 32px;
+}
+
+@media (max-width: 600px) {
+  .fc .fc-toolbar {
+    flex-wrap: wrap;
+  }
+  .fc .fc-toolbar .fc-button {
+    padding: 2px 4px;
+    height: 28px;
+    font-size: 0.8rem;
+  }
+}
+
+
+.fc .fc-daygrid-event {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 98%;
+}
+
+@media (max-width: 600px){
+    .fc .fc-daygrid-event {
+        max-height: 40px;
+        overflow-y: auto;
+    }
+}
+
+.fc .fc-col-header-cell {
+  padding: 6px 0;
+  font-weight: 600;
+  color: black;
+}
+
+@media (max-width: 600px) {
+  .fc {
+    font-size: 0.83rem;
+  }
+  .fc .fc-toolbar-title {
+    font-size: 1.1rem;
+  }
+  .fc .fc-col-header-cell {
+    padding: 4px 0;
+  }
+}

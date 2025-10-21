@@ -1,5 +1,6 @@
 // Comercial.tsx
 import ChatViewer from "../components/ChatViewer";
+import Calendario from "../components/Calendario";
 import Datos from "../components/Datos"
 import Dashboard from "../components/Dashboard";
 import Clasificacion from "./Clasificacion";
@@ -36,7 +37,7 @@ export default function Comercial() {
     display: "flex",
     alignItems: "center",
     gap: "8px",
-    backgroundColor: active ? "var(--logout-color)" : "transparent",
+    backgroundColor: active ? "var(--ring)" : "transparent",
     color: active ? "var(--card-text)" : "var(--text-color)",
     padding: "8px 12px",
     borderRadius: "10px",
@@ -102,7 +103,7 @@ export default function Comercial() {
           <ThemeToggle />
         </Box>
 
-        <Box sx={{ borderBottom: "1px solid var(--border-color)", mb: 2 }} />
+        <Box sx={{ borderBottom: "1px solid var(--bg-color)", mb: 2 }} />
 
         {/* Alerta */}
         {mensaje && (
@@ -111,7 +112,7 @@ export default function Comercial() {
               position: "fixed",
               bottom: 24,
               right: 24,
-              backgroundColor: "var(--card-bg)",
+              backgroundColor: "var(--secondary)",
               color: "var(--text-color)",
               padding: "16px 20px",
               borderRadius: "12px",
@@ -124,7 +125,7 @@ export default function Comercial() {
             <Typography fontWeight={600} fontSize={16}>
               Acceso concedido
             </Typography>
-            <Typography fontSize={14} color="#cbd5e1">
+            <Typography fontSize={14} color="black">
               Bienvenido al área de Comercial.
             </Typography>
           </Box>
@@ -152,6 +153,10 @@ export default function Comercial() {
             <LayoutGrid size={16} />
             <span>Dashboard</span>
           </Box>
+          <Box sx={tabStyle(selectedTab === "calendario")} onClick={() => setSelectedTab("calendario")}>
+            <LayoutGrid size={16} />
+            <span>Calendario</span>
+          </Box>
         </Box>
 
         {/* Panel dinámico */}
@@ -160,6 +165,7 @@ export default function Comercial() {
         {selectedTab === "datos" && <Datos />}
         {selectedTab === "cotizacion" && <Cotizacion />}
         {selectedTab === "dashboard" && <Dashboard />}
+        {selectedTab === "calendario" && <Calendario />}
         {/* Botones de navegación */}
         <Box sx={{ display: "flex", gap: 3, mt: 3, mb: 3 }}>
           <Box
