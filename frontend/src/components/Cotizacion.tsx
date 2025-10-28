@@ -178,7 +178,7 @@ export default function Cotizacion() {
 
       const { data, error } = await query;
       if (error) throw error;
-      setRows((data ?? []) as CotizacionRow[]);
+      setRows((data ?? []) as unknown as CotizacionRow[]);
     } catch (err: any) {
       setError(err.message ?? "Error al cargar datos");
     } finally {
