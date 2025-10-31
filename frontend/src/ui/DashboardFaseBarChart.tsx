@@ -19,10 +19,14 @@ export default function DashboardFaseBarChart() {
           height: '100%',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center'
+          justifyContent: 'center',
+          bgcolor: "var(--card)",
+          color: "var(--card-foreground)",
+          borderRadius: "var(--radius)",
+          border: "1px solid var(--border)",
         }}
       >
-        <CircularProgress />
+        <CircularProgress sx={{ color: "var(--ring)" }} />
       </Card>
     );
   }
@@ -35,7 +39,11 @@ export default function DashboardFaseBarChart() {
           height: '100%',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center'
+          justifyContent: 'center',
+          bgcolor: "var(--card)",
+          color: "var(--muted-foreground)",
+          borderRadius: "var(--radius)",
+          border: "1px solid var(--border)",
         }}
       >
         <Typography>No hay métricas disponibles.</Typography>
@@ -51,17 +59,47 @@ export default function DashboardFaseBarChart() {
   ];
 
   return (
-    <Card elevation={3}>
+    <Card elevation={3}
+      sx={{
+          bgcolor: "var(--card)",
+          color: "var(--card-foreground)",
+          borderRadius: "var(--radius)",
+          border: "1px solid var(--border)",
+        }}
+      >
       <CardContent>
-        <Typography variant="h6" gutterBottom>Métricas Comparativas</Typography>
+        <Typography variant="h6" gutterBottom sx={{ color: "var(--card-foreground)" }}>
+          Métricas Comparativas
+        </Typography>
+
         <ResponsiveContainer width="100%" height={242}>
           <BarChart data={fasesData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="name" />
-            <YAxis allowDecimals={false} />
-            <Tooltip />
-            <Legend />
-            <Bar dataKey="value" fill="#007bff" />
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+            <XAxis
+              dataKey="name"
+              tick={{ fill: "var(--muted-foreground)" }}
+              stroke="var(--muted-foreground)"
+              tickLine={{ stroke: "var(--muted-foreground)" }}
+            />
+            <YAxis
+              allowDecimals={false}
+              tick={{ fill: "var(--muted-foreground)" }}
+              stroke="var(--muted-foreground)"
+              tickLine={{ stroke: "var(--muted-foreground)" }}
+            />
+            <Tooltip
+              contentStyle={{
+                background: "var(--popover)",
+                border: "1px solid var(--border)",
+                borderRadius: 12,
+                color: "var(--popover-foreground)",
+              }}
+              labelStyle={{ color: "var(--popover-foreground)" }}
+              itemStyle={{ color: "var(--popover-foreground)" }}
+              formatter={(value: any) => [value, "Leads"]}
+            />
+            <Legend wrapperStyle={{ color: "var(--muted-foreground)" }} />
+            <Bar dataKey="value" name="Leads" fill="var(--chart-1)" radius={[6, 6, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </CardContent>

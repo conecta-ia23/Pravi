@@ -3,8 +3,6 @@ import { fetchDashboardMetrics } from "../services/api";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { Card, CardContent, Typography, CircularProgress } from "@mui/material";
 
-const COLORS = ["#28a745", "#dc3545"];
-
 export default function DashboardCitasPieChart() {
   const [metrics, setMetrics] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -22,7 +20,14 @@ export default function DashboardCitasPieChart() {
   ];
 
   return (
-    <Card elevation={3}>
+    <Card elevation={3}
+      sx={{
+        bgcolor: "var(--card)",
+        color: "var(--card-foreground)",
+        borderRadius: "var(--radius)",
+        border: "1px solid var(--border)",
+      }}
+    >
       <CardContent>
         <Typography variant="h6" gutterBottom>Distribución de Citas</Typography>
         <ResponsiveContainer width="100%" height={250}>
@@ -37,11 +42,18 @@ export default function DashboardCitasPieChart() {
               label
             >
               {citasData.map((_, index) => (
-                <Cell key={`cell-${index}`} fill={COLORS[index]} />
+                <Cell
+                  key={`cell-${index}`}
+                  fill={index === 0 ? "var(--chart-1)" : "var(--destructive)"}
+                  stroke="var(--card)"
+                />
               ))}
             </Pie>
             <Tooltip />
-            <Legend />
+            <Legend
+              wrapperStyle={{ color: "var(--muted-foreground)" }}
+              iconType="circle"
+            />
           </PieChart>
         </ResponsiveContainer>
       </CardContent>

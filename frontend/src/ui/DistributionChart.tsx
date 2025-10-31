@@ -79,32 +79,36 @@ export const DistributionChart: React.FC = () => {
       legend: { 
         position: 'top' as const,
         labels: {
-          padding: 8, // Use a single number for padding
-          boxHeight: 10, // Use a single number for boxHeight
-          font: {
-            size: 11, // Use a single number for font size
-          }
+          color: "gray",
+          padding: 8,
+          boxHeight: 10,
+          font: { size: 11 },
         }
       },
       tooltip: { 
         mode: 'index' as const, 
         intersect: false,
-        titleFont: { size: 11 }, // Use a single number for font size
+        backgroundColor: "var(--popover)",
+        titleColor: "white",
+        bodyColor: "var(--popover-foreground)",
+        borderColor: "var(--border)",
+        borderWidth: 1,
+        titleFont: { size: 11 },
         bodyFont: { size: 10 },
       },
     },
     scales: {
       x: {
         ticks: {
-          font: {
-            size: 12, // Use a single number for font size
-          },
-          maxRotation: 0, // Use a single number for maxRotation
+          color: "gray",
+          font: { size: 12 },
+          maxRotation: 0,
         }
       },
       y: {
         ticks: {
           font: {
+            color: "var(--muted-foreground)",
             size: 12, // Use a single number for font size
           }
         }
@@ -127,6 +131,10 @@ export const DistributionChart: React.FC = () => {
         height: '100%', // ✅ Ocupa toda la altura del contenedor padre
         display: 'flex',
         flexDirection: 'column',
+        bgcolor: "var(--card)",
+        color: "var(--card-foreground)",
+        borderRadius: "var(--radius)",
+        border: "1px solid var(--border)",
       }}
     >
       <CardContent 
@@ -146,6 +154,7 @@ export const DistributionChart: React.FC = () => {
             fontSize: { xs: '0.9rem', sm: '1rem', md: '1.1rem' }, // Título más pequeño en mobile
             flexShrink: 0, // No se comprime
             lineHeight: 1.2, // Altura de línea compacta
+            color: "var(--card-foreground)",
           }}
         >
           Distribución por categoría de negocio
@@ -166,7 +175,7 @@ export const DistributionChart: React.FC = () => {
               flex: 1, // ✅ Ocupa el espacio restante
             }}
           >
-            <CircularProgress />
+            <CircularProgress sx={{ color: "var(--ring)" }} />
           </Box>
         ) : (
           <Box 

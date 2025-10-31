@@ -7,6 +7,7 @@ from pydantic import BaseModel
 # Importar tus modelos existentes
 from routes.dashboard import router as dashboard_router
 from routes.table_data import router as table_router
+from routes.cotizaciones import router as cotizaciones_router
 from services.database_manager import SupabaseManager
 from services.database_module import DataProcessor
 from routes import clients
@@ -31,6 +32,7 @@ app.add_middleware(
 # Inicializar conexión a Supabase
 app.include_router(dashboard_router)
 app.include_router(table_router)
+app.include_router(cotizaciones_router)
 app.include_router(clients_router)
 app.include_router(chat_router)
 

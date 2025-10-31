@@ -6,17 +6,9 @@ export const ThemeToggle = () => {
   const { theme, toggleTheme } = useTheme();
 
   return (
-    <button onClick={toggleTheme} style={{
-        background: "transparent",
-        border: "none",
-        cursor: "pointer",
-        fontSize: "22px",
-        color: "var(--text-color)",
-        padding: "6px 10px",
-        borderRadius: "50%",
-        transition: "background 0.2s",
-      }}
-      title={`Cambiar a tema ${theme === "dark" ? "claro" : "oscuro"}`}
+    <button onClick={toggleTheme} className="px-3 py-3 rounded-full border border-app bg-card text-app"
+      aria-label="Toggle theme"
+      title={`Cambiar a ${theme === "dark" ? "light" : "dark"}`}
     >
       {theme === "dark" ? <Sun /> : <Moon />}
     </button>

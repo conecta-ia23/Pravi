@@ -1,106 +1,180 @@
-import { useEffect, useState } from 'react';
-import { DistributionChart } from '../ui/DistributionChart';
-import DashboardFaseBarChart from '../ui/DashboardFaseBarChart';
-import DashboardCitasPieChart from '../ui/DashboardCitasPieChart';
-import FollowupChart from '../ui/Followupchart';
-import ProjectDurationChart from '../ui/ProjectDurationChart';
-import DashboardAppointmentHours from '../ui/DashboardApointmentHour';
-import DashboardKPIs from '../ui/DashboardKPIs';
-import { fetchDashboardCross } from '../services/api';
-import ClasificacionDashboard from '../ui/ClasificationDashboard';
-import { Box, useTheme, useMediaQuery } from '@mui/material';
+import { useEffect, useState } from "react";
+import { Box, Typography, Divider } from "@mui/material";
+import { fetchDashboardCross } from "../services/api";
+
+import { DistributionChart } from "../ui/DistributionChart";
+import DashboardFaseBarChart from "../ui/DashboardFaseBarChart";
+import DashboardCitasPieChart from "../ui/DashboardCitasPieChart";
+import { NuevosMesKPI, SummaryKPICard } from "../ui/LeadsCotizaciones";
+import TopEstilosChart from "../ui/TopEstilosChart";
+import TopDistritosChart from "../ui/TopDistritoscharts";
+import UltimasCotizacionesTable from "../ui/UltimasCotizaciones";
+import AreaHistogram from "../ui/Histograma";
+import { MonthlyEvolution } from "../ui/MonthyEvolution";
+import ProjectDurationChart from "../ui/ProjectDurationChart";
+import DashboardKPIs from "../ui/DashboardKPIs";
+import ClasificacionDashboard from "../ui/ClasificationDashboard";
 
 export default function Dashboard() {
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-
-  // Altura fija para los charts, ajustable por breakpoint
-  const chartGap = isMobile ? 1.5 : 2.5;
-
   const [, setData] = useState<{ tipo: string; cantidad: number }[]>([]);
   const [, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchDashboardCross('negocio', 'id')
+    fetchDashboardCross("negocio", "id")
       .then((res: Record<string, Record<string, number>>) => {
         const formatted = Object.entries(res).map(([tipo, ids]) => ({
           tipo,
-          cantidad: Object.values(ids).filter(v => v === 1).length,
+          cantidad: Object.values(ids).filter((v) => v === 1).length,
         }));
         setData(formatted);
       })
-      .catch(err => console.error(err))
+      .catch((err) => console.error(err))
       .finally(() => setLoading(false));
   }, []);
 
   return (
     <Box
       sx={{
-        padding: 2,
-        display: 'flex',
-        flexDirection: 'column',
-        overflowY: 'auto',
-        gap: 4,
-        margin: { xs: 1.5, sm: 3 },
-        '&::-webkit-scrollbar': {
-        display: 'none',
-        },
-        scrollbarWidth: 'none', // Firefox
-        msOverflowStyle: 'none', // Internet Explorer y Edge
+        // Contenedor principal
+        maxWidth: 1400,
+        mx: "auto",
+        px: { xs: 1.5, sm: 2, md: 3 },
+        py: { xs: 1.5, md: 2 },
+        display: "grid",
+        gap: { xs: 2.5, md: 3 },
+        // Ocultar scrollbar (manteniendo scroll)
+        overflowY: "auto",
+        "&::-webkit-scrollbar": { display: "none" },
+        scrollbarWidth: "none",
+        msOverflowStyle: "none",
       }}
     >
-      {/* KPIs Section */}
-      <Box sx={{ mb: chartGap + 1, width: '100%' }}>
+      {/* ===== KPIs arriba (full width) ===== */}
+      <SectionTitle title="Visión general" />
+      <Box>
         <DashboardKPIs />
       </Box>
 
-      {/* Main Charts Grid */}
+      {/* ===== Grid principal de 2 columnas (md+) ===== */}
       <Box
         sx={{
-          display: 'flex',
-          flexDirection: { xs: 'column', md: 'row' },
-          gap: 2,
-          width: '100%',
+          display: "grid",
+          gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
+          alignItems: "start",
+          gap: { xs: 2.5, md: 3 },
         }}
       >
-        {/* Columna izquierda */}
-        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <Box sx={{ minHeight: { xs: 220, sm: 260, md: 320 }, mb: 2 }}>
+        {/* -------- Columna izquierda: “Agente / Operación” -------- */}
+        <Box
+          sx={{
+            display: "grid",
+            gap: { xs: 2, md: 2.5 },
+            // Subgrid con alturas mínimas para charts (crecen si necesitan)
+            gridAutoRows: "minmax(240px, auto)",
+          }}
+        >
+          <SectionTitle title="Agente / Operación" compact />
+          <Box sx={{ minHeight: { xs: 220, sm: 260, md: 280 } }}>
             <DistributionChart />
           </Box>
-          <Box sx={{ minHeight: { xs: 220, sm: 260, md: 320 }, mb: 2 }}>
-            <FollowupChart />
-          </Box>
-          <Box sx={{ minHeight: { xs: 220, sm: 260, md: 320 } }}>
+          <Box sx={{ minHeight: { xs: 220, sm: 260, md: 280 } }}>
             <ClasificacionDashboard />
           </Box>
-        </Box>
-
-        {/* Columna derecha */}
-        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <Box sx={{ minHeight: { xs: 220, sm: 260, md: 320 }, mb: 2 }}>
+          <Box sx={{ minHeight: { xs: 220, sm: 260, md: 280 } }}>
             <DashboardFaseBarChart />
           </Box>
-          <Box sx={{ minHeight: { xs: 220, sm: 260, md: 320 }, mb: 2 }}>
+          <Box sx={{ minHeight: { xs: 220, sm: 260, md: 280 } }}>
             <DashboardCitasPieChart />
           </Box>
-          <Box sx={{ minHeight: { xs: 220, sm: 260, md: 320 } }}>
+          <Box sx={{ minHeight: { xs: 220, sm: 260, md: 280 } }}>
             <ProjectDurationChart />
           </Box>
         </Box>
+
+        {/* -------- Columna derecha: “Comercial / Cotizaciones” -------- */}
+        <Box
+          sx={{
+            display: "grid",
+            gap: { xs: 2, md: 2.5 },
+            gridAutoRows: "minmax(240px, auto)",
+          }}
+        >
+          <SectionTitle title="Comercial / Cotizaciones" compact />
+          {/* KPIs compactos */}
+          <Box
+            sx={{
+              display: "grid",
+              gap: 2,
+              gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
+              alignItems: "stretch",
+            }}
+          >
+            <Box sx={{ minHeight: 120 }}>
+              <NuevosMesKPI />
+            </Box>
+            <Box sx={{ minHeight: 120 }}>
+              <SummaryKPICard />
+            </Box>
+          </Box>
+
+          <Box sx={{ minHeight: { xs: 240, sm: 280, md: 320 } }}>
+            <MonthlyEvolution />
+          </Box>
+          <Box sx={{ minHeight: { xs: 240, sm: 280, md: 320 } }}>
+            <TopEstilosChart />
+          </Box>
+          <Box sx={{ minHeight: { xs: 240, sm: 280, md: 320 } }}>
+            <TopDistritosChart />
+          </Box>
+          <Box sx={{ minHeight: { xs: 240, sm: 280, md: 320 } }}>
+            <UltimasCotizacionesTable />
+          </Box>
+        </Box>
       </Box>
 
-      {/* Bottom Full Width Chart */}
-      <Box
+      {/* ===== Ancho completo abajo ===== */}
+      <SectionTitle title="Distribuciones" />
+      <Box sx={{ minHeight: { xs: 280, sm: 320, md: 360 } }}>
+        <AreaHistogram
+          maxPages={4}
+          pageSize={200}
+          binSize={5}
+          clipOutliers
+          title="Distribución de áreas de cotización"
+        />
+      </Box>
+    </Box>
+  );
+}
+
+/** Título de sección con estilo “theme-aware” */
+function SectionTitle({ title, compact = false }: { title: string; compact?: boolean }) {
+  return (
+    <Box
+      sx={{
+        display: "grid",
+        gridTemplateColumns: "auto 1fr",
+        alignItems: "center",
+        gap: 1,
+        mb: compact ? 0 : 0.5,
+      }}
+    >
+      <Typography
+        variant="subtitle1"
         sx={{
-          mt: chartGap + 1,
-          width: '100%',
-          height: isMobile ? 250 : 320,
-          mb: 8,
+          color: "var(--card-foreground)",
+          fontWeight: 900,
+          letterSpacing: 0.2,
         }}
       >
-        <DashboardAppointmentHours />
-      </Box>
+        {title}
+      </Typography>
+      <Divider
+        sx={{
+          borderColor: "var(--border)",
+          opacity: 0.7,
+        }}
+      />
     </Box>
   );
 }

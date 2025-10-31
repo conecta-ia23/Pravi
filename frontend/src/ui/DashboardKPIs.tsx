@@ -113,7 +113,8 @@ function KPIBox({
       sx={{
         p: 1.5,
         borderRadius: 2,
-        bgcolor: "background.paper",
+        bgcolor: "var(--card)",
+        color: "var(--card-foreground)",
         boxShadow: 1,
         width: "80%",
         minHeight: 80,
@@ -121,12 +122,12 @@ function KPIBox({
         flexDirection: "column",
         justifyContent: "center",
         alignItems: "center",
-        border: "1px solid var(--border-color)",
+        border: "1px solid var(--border)",
       }}
     >
       <Typography
         variant="subtitle2"
-        color="text.secondary"
+        color="var(--muted-foreground)"
         sx={{ fontWeight: 600, fontSize: 15, textAlign: "center" }}
       >
         {label}
@@ -137,7 +138,7 @@ function KPIBox({
         <Typography
           variant="h4"
           sx={{
-            color: "text.primary",
+            color: "var(--card-foreground)",
             fontWeight: 700,
             fontSize: 32,
             textAlign: "center",

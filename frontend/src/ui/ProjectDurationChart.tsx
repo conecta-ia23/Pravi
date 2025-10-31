@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Box, Typography, CircularProgress } from "@mui/material";
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { fetchDashboardProjectDuration } from "../services/api";
 
 export default function ProjectDurationChart() {
@@ -32,7 +32,8 @@ export default function ProjectDurationChart() {
       sx={{
         p: 3,
         borderRadius: 2,
-        bgcolor: "background.paper",
+        bgcolor: "var(--card)",
+        color: "var(--card-foreground)",
         boxShadow: 2,
         minHeight: 250,
         display: "flex",
@@ -40,22 +41,49 @@ export default function ProjectDurationChart() {
         gap: 2,
       }}
     >
-      <Typography variant="subtitle2" color="text.secondary">
+      <Typography variant="subtitle2" color="var(--muted-foreground)">
         Duración promedio de atención
       </Typography>
       {loading ? (
         <CircularProgress size={24} />
       ) : (
         <>
-          <Typography variant="h4" color="text.primary">
+          <Typography variant="h4" color="var(--card-foreground)">
             {average} meses
           </Typography>
           <ResponsiveContainer width="100%" height={180}>
-            <LineChart data={data}>
-              <XAxis dataKey="tiempo" />
-              <YAxis />
-              <Tooltip />
-              <Line type="monotone" dataKey="cantidad" stroke="#3b82f6" strokeWidth={2} />
+            <LineChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
+              <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
+              <XAxis
+                dataKey="tiempo"
+                tick={{ fill: "var(--muted-foreground)" }}
+                stroke="var(--muted-foreground)"
+                tickLine={{ stroke: "var(--muted-foreground)" }}
+              />
+              <YAxis
+                tick={{ fill: "var(--muted-foreground)" }}
+                stroke="var(--muted-foreground)"
+                tickLine={{ stroke: "var(--muted-foreground)" }}
+              />
+              <Tooltip
+                contentStyle={{
+                  background: "var(--popover)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 12,
+                  color: "var(--popover-foreground)",
+                }}
+                labelStyle={{ color: "var(--popover-foreground)" }}
+                itemStyle={{ color: "var(--popover-foreground)" }}
+                formatter={(value: any) => [value, "Cantidad"]}
+                labelFormatter={(l) => `Mes: ${l}`}
+              />
+              <Line
+                type="monotone"
+                dataKey="cantidad"
+                stroke="var(--chart-2)"
+                strokeWidth={2}
+                dot={{ r: 3, stroke: "var(--chart-2)", fill: "var(--chart-2)" }}
+              />
             </LineChart>
           </ResponsiveContainer>
         </>

@@ -47,7 +47,7 @@
   --bubble-muted: #94a3b8;           /* timestamp */
 }
 
-/* ====== Tema DARK (activa con .dark en <html>) ====== */
+/* ====== Tema DARK ====== */
 .dark {
   /* Colores principales (convertidos de HSL a HEX) */
   --bg-color:       #000000;  /* 0 0% 0% */
@@ -87,7 +87,7 @@
 
   /* Chat bubbles (DARK) */
   --bubble-in: #374151;              /* gris pizarra para entrantes */
-  --bubble-in-foreground: #0f172a;   /* texto blanco */
+  --bubble-in-foreground: #ffffff;   /* texto blanco */
   --bubble-out: #facc15;             /* mismo amarillo (o usa #eab308 si prefieres) */
   --bubble-out-foreground: #1a1a1a;  /* texto oscuro para legibilidad */
   --bubble-muted: #9aa2ad;           /* timestamp */

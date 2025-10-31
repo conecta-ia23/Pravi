@@ -45,9 +45,9 @@ export default function ClasificacionDashboard() {
   }, []);
 
   return (
-    <Box sx={{ width: "auto", height: 290, bgcolor: "background.paper",
+    <Box sx={{ width: "auto", height: 290, bgcolor: "var(--card)", color: "var(--card-foreground)", border: "1px solid var(--border)",
         p: 2, borderRadius: 2, boxShadow: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-      <Typography variant="h6" sx={{ mb: 2, color: 'text.primary', textAlign: 'center', fontWeight: 70 }}>
+      <Typography variant="h6" sx={{ mb: 2, color: 'var(--card-foreground)', textAlign: 'center', fontWeight: 70 }}>
         Calificación de Clientes
       </Typography>
       {loading ? (
@@ -75,7 +75,7 @@ export default function ClasificacionDashboard() {
                 {data.map((_, index) => (
                     <Cell key={`cell-${index}`} fill={BAR_COLORS[index % BAR_COLORS.length]} />
                 ))}
-              <LabelList dataKey="value" position="right" />
+              <LabelList dataKey="value" position="right" fill="var(--card-foreground)" />
             </Bar>
           </BarChart>
         </ResponsiveContainer>
