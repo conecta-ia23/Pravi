@@ -136,8 +136,6 @@ export default function Dashboard() {
       <SectionTitle title="Distribuciones" />
       <Box sx={{ minHeight: { xs: 280, sm: 320, md: 360 } }}>
         <AreaHistogram
-          maxPages={4}
-          pageSize={200}
           binSize={5}
           clipOutliers
           title="Distribución de áreas de cotización"
