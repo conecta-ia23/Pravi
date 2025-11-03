@@ -69,7 +69,7 @@ export const SummaryKPICard: React.FC = () => {
     (async () => {
       try {
         setLoading(true);
-        const res = await fetch(`${BASE_URL}/cotizaciones/metrics/summary`, {
+        const res = await fetch(`${BASE_URL}/cotizaciones/summary`, {
           headers: { "Cache-Control": "no-store" }
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);

@@ -27,14 +27,14 @@ export async function listCotizaciones(opts: {
   });
   if (q) params.set("q", q);
 
-  const res = await fetch(`${BASE_URL}/cotizaciones?${params.toString()}`);
+  const res = await fetch(`${BASE_URL}/cotizaciones/list_cotizaciones?${params.toString()}`);
   if (!res.ok) throw new Error(`HTTP ${res.status} al listar cotizaciones`);
   return res.json();
 }
 
 // -------- Cotizaciones: resumen --------
 export async function getCotizSummary(): Promise<SummaryResp> {
-  const res = await fetch(`${BASE_URL}/cotizaciones/metrics/summary`);
+  const res = await fetch(`${BASE_URL}/cotizaciones/summary`);
   if (!res.ok) throw new Error(`HTTP ${res.status} al obtener summary`);
   return res.json();
 }
@@ -42,23 +42,38 @@ export async function getCotizSummary(): Promise<SummaryResp> {
 // -------- Cotizaciones: series mensuales --------
 export async function getMonthlySeries(tz = "America/Lima"): Promise<MonthlyPoint[]> {
   const params = new URLSearchParams({ tz });
-  const res = await fetch(`${BASE_URL}/cotizaciones/metrics/series/monthly?${params}`);
+  const res = await fetch(`${BASE_URL}/cotizaciones/series-monthly?${params}`);
   if (!res.ok) throw new Error(`HTTP ${res.status} al obtener series mensuales`);
   return res.json();
 }
 
 // -------- Cotizaciones: top estilo --------
 export async function getTopEstilo(limit = 5): Promise<TopItem[]> {
-  const res = await fetch(`${BASE_URL}/cotizaciones/metrics/top/estilo?limit=${limit}`);
+  const res = await fetch(`${BASE_URL}/cotizaciones/top-estilo?limit=${limit}`);
   if (!res.ok) throw new Error(`HTTP ${res.status} al obtener top estilo`);
   return res.json();
 }
 
 // -------- Cotizaciones: top distrito --------
 export async function getTopDistrito(limit = 5): Promise<TopItem[]> {
-  const res = await fetch(`${BASE_URL}/cotizaciones/metrics/top/distrito?limit=${limit}`);
+  const res = await fetch(`${BASE_URL}/cotizaciones/top-distrito?limit=${limit}`);
   if (!res.ok) throw new Error(`HTTP ${res.status} al obtener top distrito`);
   return res.json();
+}
+
+export async function getAreaHistogram(opts: { bin?: number; clip?: boolean; limit?: number } = {}) {
+  const { bin = 5, clip = true, limit = 5000 } = opts;
+  const params = new URLSearchParams({
+    bin: String(bin),
+    clip: clip ? "1" : "0",
+    limit: String(limit),
+  });
+  const res = await fetch(`${BASE_URL}/cotizaciones/histogram?${params.toString()}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status} al obtener histograma`);
+  return res.json() as Promise<{
+    bins: Array<{ from: number; to: number; range: string; count: number }>;
+    mean: number; median: number; count: number;
+  }>;
 }
 
 // -------- Test unitario: últimos 5 (sin formateo extra) --------

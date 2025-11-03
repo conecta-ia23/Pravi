@@ -1,6 +1,6 @@
 # services/cotizacion_dashboard.py
 import pandas as pd
-import asyncio
+import asyncio, math, bisect
 import pytz
 from datetime import datetime
 from typing import List, Dict, Any
@@ -156,3 +156,105 @@ class CotizacionDashboard:
             {"label": r["distrito"], "total": int(r["total"]), "suma_precio": float(r["suma_precio"]), "promedio": float(r["promedio"] or 0)}
             for _, r in g.iterrows()
         ]
+    
+
+    @staticmethod
+    def _percentile(arr: List[float], p: float) -> float:
+        if not arr: return 0.0
+        s = sorted(arr)
+        if len(s) == 1: return float(s[0])
+        k = (p/100.0) * (len(s) - 1)
+        f = math.floor(k); c = math.ceil(k)
+        if f == c: return float(s[f])
+        return float(s[f] * (c - k) + s[c] * (k - f))
+
+    def _load_areas_sync(self, limit: int = 5000, page_size: int = 1000) -> List[float]:
+        """
+        Carga 'area_m2' paginando via PostgREST (sin SQL crudo).
+        Lee como máx. 'limit' filas para no demorar.
+        """
+        values: List[float] = []
+        offset = 0
+        while len(values) < limit:
+            start = offset
+            end = min(offset + page_size - 1, limit - 1)
+            # Solo la columna necesaria + filtro básico
+            resp = (
+                self.client.table("cotizaciones")
+                .select("area_m2")
+                .gt("area_m2", 0)             # > 0
+                .order("fecha_hora", desc=True)  # para traer lo más reciente primero
+                .range(start, end)
+                .execute()
+            )
+            rows = resp.data or []
+            for r in rows:
+                v = r.get("area_m2")
+                if v is not None:
+                    try:
+                        fv = float(v)
+                        if fv > 0:
+                            values.append(fv)
+                    except Exception:
+                        continue
+            # Si vino menos que el page_size, no hay más
+            if len(rows) < (end - start + 1):
+                break
+            offset += page_size
+        # recorta a 'limit' por si acaso
+        return values[:limit]
+    
+    async def histogram(self, bin: int = 5, clip: bool = True, limit: int = 5000) -> Dict[str, Any]:
+        """
+        Histograma calculado en Python.
+        - bin: ancho del bin (m²).
+        - clip: recorta outliers por percentiles 1–99 si hay >=20 puntos.
+        - limit: máximo de filas a leer desde Supabase para no demorar.
+        """
+        if bin <= 0: bin = 5
+
+        # Supabase client es sync → correr en thread
+        values = await asyncio.to_thread(self._load_areas_sync, limit, 1000)
+        if not values:
+            return {"bins": [], "mean": 0.0, "median": 0.0, "count": 0}
+
+        vals = values
+        if clip and len(vals) >= 20:
+            p1 = self._percentile(vals, 1)
+            p99 = self._percentile(vals, 99)
+            vals = [v for v in vals if p1 <= v <= p99]
+            if not vals:  # fallback por si se vacía
+                vals = values
+
+        # stats
+        mean = sum(vals) / len(vals)
+        median = self._percentile(vals, 50)
+
+        # binning eficiente con bisect
+        v_sorted = sorted(vals)
+        vmin, vmax = min(v_sorted), max(v_sorted)
+        start = math.floor(vmin / bin) * bin
+        end = math.ceil(vmax / bin) * bin
+        bins: List[Dict[str, Any]] = []
+
+        left = bisect.bisect_left(v_sorted, start)
+        x = start
+        while x < end:
+            y = x + bin
+            right = bisect.bisect_left(v_sorted, y, lo=left)  # busca desde 'left'
+            count = right - left
+            bins.append({
+                "from": int(x),
+                "to": int(y),
+                "range": f"{int(x)}–{int(y)}",
+                "count": int(count),
+            })
+            left = right
+            x = y
+
+        return {
+            "bins": bins,
+            "mean": round(mean, 2),
+            "median": round(median, 2),
+            "count": len(vals),
+        }
