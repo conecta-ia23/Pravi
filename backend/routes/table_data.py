@@ -10,7 +10,7 @@ from services.data_utils import sanitize_dataframe
 router = APIRouter(prefix="/table-data", tags=["Table Data"])
 db = SupabaseManager()
 
-@router.get("/metrics")
+@router.get("/metrics") # Endpoint para validar // no se usa en ningún gráfico hasta el momento
 async def get_table_metrics():
     data = await db.get_clients_page(page=1, size=50)
     return {
@@ -57,7 +57,7 @@ async def get_table_chart_data(
 
     return {
         "scope": scope,                # opcional; quítalo si no lo quieres
-        "estilo": estilo_counts,           # igual que hoy
+        "estilo": estilo_counts,           
         "seguimiento": seguimiento_counts,
         "calificacion": calificacion_counts,
         "categoria": categoria_counts,

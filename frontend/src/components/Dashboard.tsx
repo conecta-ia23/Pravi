@@ -9,6 +9,7 @@ import { NuevosMesKPI, SummaryKPICard } from "../ui/LeadsCotizaciones";
 import TopEstilosChart from "../ui/TopEstilosChart";
 import TopDistritosChart from "../ui/TopDistritoscharts";
 import UltimasCotizacionesTable from "../ui/UltimasCotizaciones";
+import HourlyInteractionsChart from "../ui/HourInteractionChart";
 import AreaHistogram from "../ui/Histograma";
 import { MonthlyEvolution } from "../ui/MonthyEvolution";
 import ProjectDurationChart from "../ui/ProjectDurationChart";
@@ -95,7 +96,7 @@ export default function Dashboard() {
         <Box
           sx={{
             display: "grid",
-            gap: { xs: 2, md: 2.5 },
+            gap: { xs: 1.5, md: 2 },
             gridAutoRows: "minmax(240px, auto)",
           }}
         >
@@ -109,15 +110,15 @@ export default function Dashboard() {
               alignItems: "stretch",
             }}
           >
-            <Box sx={{ minHeight: 120 }}>
+            <Box sx={{ minHeight: 90 }}>
               <NuevosMesKPI />
             </Box>
-            <Box sx={{ minHeight: 120 }}>
+            <Box sx={{ minHeight: 90 }}>
               <SummaryKPICard />
             </Box>
           </Box>
 
-          <Box sx={{ minHeight: { xs: 240, sm: 280, md: 320 } }}>
+          <Box sx={{ minHeight: { xs: 200, sm: 240, md: 280 } }}>
             <MonthlyEvolution />
           </Box>
           <Box sx={{ minHeight: { xs: 240, sm: 280, md: 320 } }}>
@@ -130,6 +131,13 @@ export default function Dashboard() {
             <UltimasCotizacionesTable />
           </Box>
         </Box>
+      </Box>
+
+      <SectionTitle title="Horas Con Mayor Concurrencia" />
+      <Box sx={{ minHeight: { xs: 280, sm: 320, md: 360 } }}>
+        <HourlyInteractionsChart
+          title="Distribución de horas de interacción"
+        />
       </Box>
 
       {/* ===== Ancho completo abajo ===== */}
