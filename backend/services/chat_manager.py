@@ -209,10 +209,15 @@ def get_whatsapp_media_url(media_id: str) -> str:
 
 def download_whatsapp_media(media_url: str) -> bytes:
     try:
-        response = requests.get(media_url, timeout=30)
+        access_token = os.getenv("WHATSAPP_ACCESS_TOKEN")
+        headers = {
+            "Authorization": f"Bearer {access_token}"
+        }
+
+        response = requests.get(media_url, headers=headers, timeout=30)
         response.raise_for_status()
     except requests.RequestException as exc:
-        raise HTTPException(status_code=502, detail=f"No se pudo descargar el archivo desde WhatsApp: {exc}") from exc
+        raise HTTPException(status_code=502, detail=f"No se pudo descargar el archivo desde WhatsApp: {exc}")
     return response.content
 
 
