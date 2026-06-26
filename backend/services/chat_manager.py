@@ -4,6 +4,8 @@ from fastapi import UploadFile, HTTPException
 import requests
 import json
 import os
+import re
+import unicodedata
 from typing import Optional, Any, Dict
 
 #Configuración WhatsApp (agregar a tus variables de entorno)
@@ -219,12 +221,24 @@ def download_whatsapp_media(media_url: str) -> bytes:
     except requests.RequestException as exc:
         raise HTTPException(status_code=502, detail=f"No se pudo descargar el archivo desde WhatsApp: {exc}")
     return response.content
-
-
+def sanitize_storage_filename(filename: str, media_id: str) -> str:
+    raw_name = filename or f"media-{media_id}"
+    normalized = unicodedata.normalize("NFKD", raw_name)
+    ascii_name = normalized.encode("ascii", "ignore").decode("ascii")
+    safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", ascii_name).strip("._-")
+    return safe_name or f"media-{media_id}"
+def normalize_media_kind_by_mime(kind: str, mime: str) -> str:
+    mime = (mime or "").lower()
+    if mime.startswith("image/"):
+        return "image"
+    if mime.startswith("audio/"):
+        return "audio"
+    if mime.startswith("video/"):
+        return "video"
+    return kind or "document" 
 def upload_inbound_media_to_storage(file_bytes: bytes, session_id: str, media_id: str, filename: str, mime_type: str) -> str:
-    safe_filename = "".join(ch for ch in (filename or f"media-{media_id}") if ch.isalnum() or ch in "._-") or f"media-{media_id}"
+    safe_filename = sanitize_storage_filename(filename, media_id)
     storage_path = f"whatsapp-inbound/{session_id}/{media_id}-{safe_filename}"
-
     try:
         storage_client = supabase.client.storage.from_(DEFAULT_STORAGE_BUCKET)
 
@@ -274,6 +288,7 @@ async def ingest_inbound_media_message(payload: Dict[str, Any], internal_token: 
     media_id = str(payload.get("media_id") or "").strip()
     kind = str(payload.get("kind") or "").strip().lower()
     mime = str(payload.get("mime") or "").strip()
+    kind = normalize_media_kind_by_mime(kind, mime)
     filename = str(payload.get("filename") or f"{kind}-{media_id}").strip()
     caption = str(payload.get("caption") or "").strip()
 
