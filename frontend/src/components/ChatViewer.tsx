@@ -276,68 +276,79 @@ export default function ChatViewer() {
     setPendingAttachment(file)
   }
 
-  const handleSendMedia = async () => {
-    if (!activeSessionId || !pendingAttachment || isUploadingMedia || isBotActive) return
+const handleSendMedia = async () => {
+  if (!activeSessionId || !pendingAttachment || isUploadingMedia || isBotActive) return;
 
-    try {
-      setIsUploadingMedia(true)
+  const attachmentToSend = pendingAttachment;
 
-      if (MEDIA_TEST_MODE) {
-        const timestamp = new Date().toISOString()
-        const localUrl = createLocalPreviewUrl(pendingAttachment)
-        const validation = validateMediaFile(pendingAttachment)
-        const messagePayload = {
-          type: validation.category,
-          content: `Archivo enviado (${pendingAttachment.name})`,
-          mediaUrl: localUrl,
-          tool_calls: [],
-          additional_kwargs: {},
-          response_metadata: {},
-          invalid_tool_calls: []
-        }
+  try {
+    setIsUploadingMedia(true);
 
-        const simulatedMessage: Message = {
-          id: `${activeSessionId}-${timestamp}`,
-          session_id: activeSessionId,
-          message: {
-            ...messagePayload,
-            type: "ai"
-          } as Message["message"],
-          time: timestamp
-        }
+    if (MEDIA_TEST_MODE) {
+      const timestamp = new Date().toISOString();
+      const localUrl = createLocalPreviewUrl(attachmentToSend);
+      const validation = validateMediaFile(attachmentToSend);
 
-        setConversations((prev) => ({
-          ...prev,
-          [activeSessionId]: [...(prev[activeSessionId] || []), simulatedMessage]
-        }))
-        setPendingAttachment(null)
-        setInputMessage("")
-        toast({
-          title: "Modo prueba",
-          description: `Se simuló el adjunto ${pendingAttachment.name}`,
-        })
-        return
-      }
+      const messagePayload = {
+        type: validation.category,
+        content: `Archivo enviado (${attachmentToSend.name})`,
+        mediaUrl: localUrl,
+        tool_calls: [],
+        additional_kwargs: {},
+        response_metadata: {},
+        invalid_tool_calls: [],
+      };
 
-      const mediaType = getMediaTypeForFile(pendingAttachment)
-      await sendMediaToSession(activeSessionId, mediaType, pendingAttachment)
-      setPendingAttachment(null)
-      setInputMessage("")
+      const simulatedMessage: Message = {
+        id: `${activeSessionId}-${timestamp}`,
+        session_id: activeSessionId,
+        message: {
+          ...messagePayload,
+          type: "ai",
+        } as Message["message"],
+        time: timestamp,
+      };
+
+      setConversations((prev) => ({
+        ...prev,
+        [activeSessionId]: [...(prev[activeSessionId] || []), simulatedMessage],
+      }));
+
+      setPendingAttachment(null);
+      setInputMessage("");
+
       toast({
-        title: "Archivo enviado",
-        description: `Se envió ${pendingAttachment.name}`,
-      })
-    } catch (error) {
-      console.error("Error sending media:", error)
-      toast({
-        title: "Error",
-        description: "No se pudo enviar el archivo",
-        variant: "destructive",
-      })
-    } finally {
-      setIsUploadingMedia(false)
+        title: "Modo prueba",
+        description: `Se simuló el adjunto ${attachmentToSend.name}`,
+      });
+
+      return;
     }
+
+    const mediaType = getMediaTypeForFile(attachmentToSend);
+
+    await sendMediaToSession(activeSessionId, mediaType, attachmentToSend);
+
+    setPendingAttachment(null);
+    setInputMessage("");
+
+    toast({
+      title: "Archivo enviado",
+      description: `Se envió ${attachmentToSend.name}`,
+    });
+  } catch (error) {
+    console.error("Error sending media:", error);
+
+    toast({
+      title: "Error",
+      description: "No se pudo enviar el archivo",
+      variant: "destructive",
+    });
+  } finally {
+    setIsUploadingMedia(false);
   }
+};
+
 
   const createNewChat = async () => {
     if (!newPhoneNumber.trim() || !newClientName.trim() || !newClientMessage.trim()) {
