@@ -328,21 +328,38 @@ async def ingest_inbound_media_message(payload: Dict[str, Any], internal_token: 
 
 
 async def send_media_message_to_session(session_id: str, file: UploadFile, media_type: str):
-    if media_type not in ALLOWED_TYPES:
-        raise HTTPException(status_code=400, detail="Tipo de archivo no permitido")
-    file_bytes = await file.read()
-    if len(file_bytes) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=400, detail="Archivo demasiado grande (máx 30MB)")
-    
     is_active = await get_bot_status(session_id)
     if is_active:
         raise HTTPException(status_code=403, detail="El bot está activo. No se puede intervenir.")
+
     file_bytes = await file.read()
-    path = f"chat/{file.filename}"
+
+    timestamp_id = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
+    safe_filename = sanitize_storage_filename(file.filename, timestamp_id)
+    path = f"chat/{session_id}/{timestamp_id}-{safe_filename}"
+    mime_type = file.content_type or "application/octet-stream"
 
     try:
-        supabase.client.storage.from_("media").upload(path, file_bytes)
-        public_url = supabase.client.storage.from_("media").get_public_url(path).get("publicUrl")
+        storage_client = supabase.client.storage.from_("media")
+        storage_client.upload(
+            path,
+            file_bytes,
+            file_options={
+                "content-type": mime_type,
+                "cache-control": "3600",
+                "upsert": "true",
+            }
+        )
+
+        public_url_response = storage_client.get_public_url(path)
+        if isinstance(public_url_response, dict):
+            public_url = public_url_response.get("publicUrl") or public_url_response.get("public_url")
+        else:
+            public_url = public_url_response
+
+        if not public_url:
+            raise Exception("No public URL returned")
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error subiendo archivo: {e}")
 
@@ -364,8 +381,6 @@ async def send_media_message_to_session(session_id: str, file: UploadFile, media
 
     result = await persist_message(session_id, message_payload)
     return {"status": "media_sent", "mediaUrl": public_url, "data": result.data}
-
-
 async def get_bot_status(session_id: str):
     """Obtiene el estado actual del bot para una sesión específica"""
     try:
