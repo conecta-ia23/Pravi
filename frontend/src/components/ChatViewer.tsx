@@ -5,10 +5,15 @@ import { useMediaQuery } from "@mui/material";
 import { createClient } from "@supabase/supabase-js"
 import { useTheme } from "@mui/material/styles";
 import { useToast } from "../hooks/use-toast";
+import { sendMediaToSession } from "../services/api";
+import { MediaBubble } from "./MediaBubble";
+import { MediaComposer } from "./MediaComposer";
+import { createLocalPreviewUrl, getMediaTypeForFile, validateMediaFile } from "../lib/mediaUpload";
 
 // Configuración de WhatsApp API
 const WHATSAPP_API_URL = import.meta.env.VITE_WHATSAPP_API_URL || ""
 const WHATSAPP_API_TOKEN = import.meta.env.VITE_WHATSAPP_API_TOKEN || ""
+const MEDIA_TEST_MODE = String(import.meta.env.VITE_MEDIA_TEST_MODE || "").toLowerCase() === "true"
 // Initialize Supabase client
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || ""
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || ""
@@ -63,7 +68,7 @@ export default function ChatViewer() {
   const [nuevoMensaje, setNuevoMensaje] = useState("");
   const conversationListRef = useRef<HTMLDivElement>(null);
   const chatMessagesRef = useRef<HTMLDivElement>(null);
-  const [clientsInfo, setClientsInfo] = useState<{[key: string]: ClientInfo}>({})
+  const [clientsInfo, setClientsInfo] = useState<{ [key: string]: ClientInfo }>({})
   const { toast } = useToast()
 
   const [showEditNameModal, setShowEditNameModal] = useState(false)
@@ -75,7 +80,9 @@ export default function ChatViewer() {
   const [newPhoneNumber, setNewPhoneNumber] = useState("")
   const [newClientName, setNewClientName] = useState("")
   const [newClientMessage, setNewClientMessage] = useState("")
-  
+  const [pendingAttachment, setPendingAttachment] = useState<File | null>(null)
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false)
+
   const PAGE_SIZE = 200
 
   // Función principal para cargar conversaciones
@@ -86,13 +93,13 @@ export default function ChatViewer() {
         setHasMore(true)
         if (!searching) setConversations({})
       }
-      
+
       setLoadingMore(true)
-      
+
       let query = supabase
         .from(table_chat)
         .select("*")
-      
+
       // Agrupamos primero por session_id para obtener solo IDs de sesión únicos
       // Si hay término de búsqueda, lo aplicamos
       if (searchTerm) {
@@ -101,12 +108,12 @@ export default function ChatViewer() {
           .from(table_records)
           .select("telefono")
           .ilike("nombre", `%${searchTerm}%`);
-        
+
         if (clientError) throw clientError;
-        
+
         // Obtenemos los números de teléfono que coinciden con la búsqueda por nombre
         const matchingNumbers = clientMatches?.map(client => client.telefono) || [];
-        
+
         // Si encontramos coincidencias por nombre
         if (matchingNumbers.length > 0) {
           query = query.or(`session_id.in.(${matchingNumbers.join(',')}),session_id.ilike.%${searchTerm}%,message->>content.ilike.%${searchTerm}%`);
@@ -115,14 +122,14 @@ export default function ChatViewer() {
           query = query.or(`session_id.ilike.%${searchTerm}%,message->>content.ilike.%${searchTerm}%`);
         }
       }
-      
+
       // Ordenamos por tiempo descendente y aplicamos paginación
       const { data, error } = await query
         .order("time", { ascending: false })
         .range(reset ? 0 : page * PAGE_SIZE, (reset ? 0 : page) * PAGE_SIZE + PAGE_SIZE - 1)
-        
+
       if (error) throw error
-      
+
       // Si no hay más datos para cargar
       if (!data || data.length === 0) {
         setHasMore(false)
@@ -132,35 +139,35 @@ export default function ChatViewer() {
         }
         return
       }
-      
+
       // Obtener los session_ids únicos de este lote
       const sessionIds = [...new Set(data.map(item => item.session_id))]
-      
+
       // Agregar esta línea después:
       await loadClientsInfo(sessionIds)
 
       // Para cada session_id, cargar todos sus mensajes
       const newConversations: { [key: string]: Message[] } = { ...(!reset ? conversations : {}) }
-      
+
       await Promise.all(sessionIds.map(async (sessionId) => {
         // Si ya tenemos esta conversación cargada y no estamos reseteando, no la volvemos a cargar
         if (!reset && newConversations[sessionId]) return
-        
+
         const { data: sessionMessages, error: sessionError } = await supabase
           .from(table_chat)
           .select("*")
           .eq("session_id", sessionId)
           .order("time", { ascending: true })
-        
+
         if (sessionError) throw sessionError
-        
+
         if (sessionMessages && sessionMessages.length > 0) {
           newConversations[sessionId] = sessionMessages
         }
       }))
-      
+
       setConversations(newConversations)
-      
+
       // Si no hay sesión activa y hay conversaciones, seleccionamos la más reciente
       if (!activeSessionId && Object.keys(newConversations).length > 0 && reset) {
         const mostRecentSession = Object.entries(newConversations)
@@ -171,11 +178,11 @@ export default function ChatViewer() {
           })[0][0]
         setActiveSessionId(mostRecentSession)
       }
-      
+
       if (!reset) {
         setPage(prevPage => prevPage + 1)
       }
-      
+
       setLoading(false)
       setLoadingMore(false)
     } catch (error) {
@@ -196,12 +203,12 @@ export default function ChatViewer() {
         .from(table_records)
         .select("nombre, tipo_cliente, categoria")
         .eq("telefono", phoneNumber)
-      
+
       if (error) {
-          console.error("Error fetching client info:", error)
+        console.error("Error fetching client info:", error)
         return null
       }
-      
+
       if (!data || data.length === 0) {
         return null
       }
@@ -214,8 +221,8 @@ export default function ChatViewer() {
 
   const loadClientsInfo = async (sessionIds: string[]) => {
     try {
-      const clientsData: {[key: string]: ClientInfo} = {}
-      
+      const clientsData: { [key: string]: ClientInfo } = {}
+
       await Promise.all(
         sessionIds.map(async (sessionId) => {
           const clientInfo = await fetchClientInfo(sessionId)
@@ -224,13 +231,111 @@ export default function ChatViewer() {
           }
         })
       )
-      
+
       setClientsInfo(prevClients => ({
         ...prevClients,
         ...clientsData
       }))
     } catch (error) {
       console.error("Error loading clients info:", error)
+    }
+  }
+
+  const normalizeMessagePayload = (message: unknown) => {
+    if (typeof message === "string") {
+      try {
+        return JSON.parse(message)
+      } catch {
+        return { type: "text", content: message }
+      }
+    }
+
+    return message || { type: "text", content: "" }
+  }
+
+  const getMessageMediaUrl = (message: any) => {
+    return message?.media?.url || message?.mediaUrl || message?.media_url || message?.file_url || message?.attachment_url || null
+  }
+
+  const handleAttachFile = (file: File | null) => {
+    if (!file) {
+      setPendingAttachment(null)
+      return
+    }
+
+    const validation = validateMediaFile(file)
+    if (!validation.valid) {
+      toast({
+        title: "Archivo no válido",
+        description: validation.error || "No se pudo validar el archivo",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setPendingAttachment(file)
+  }
+
+  const handleSendMedia = async () => {
+    if (!activeSessionId || !pendingAttachment || isUploadingMedia || isBotActive) return
+
+    try {
+      setIsUploadingMedia(true)
+
+      if (MEDIA_TEST_MODE) {
+        const timestamp = new Date().toISOString()
+        const localUrl = createLocalPreviewUrl(pendingAttachment)
+        const validation = validateMediaFile(pendingAttachment)
+        const messagePayload = {
+          type: validation.category,
+          content: `Archivo enviado (${pendingAttachment.name})`,
+          mediaUrl: localUrl,
+          tool_calls: [],
+          additional_kwargs: {},
+          response_metadata: {},
+          invalid_tool_calls: []
+        }
+
+        const simulatedMessage: Message = {
+          id: `${activeSessionId}-${timestamp}`,
+          session_id: activeSessionId,
+          message: {
+            ...messagePayload,
+            type: "ai"
+          } as Message["message"],
+          time: timestamp
+        }
+
+        setConversations((prev) => ({
+          ...prev,
+          [activeSessionId]: [...(prev[activeSessionId] || []), simulatedMessage]
+        }))
+        setPendingAttachment(null)
+        setInputMessage("")
+        toast({
+          title: "Modo prueba",
+          description: `Se simuló el adjunto ${pendingAttachment.name}`,
+        })
+        return
+      }
+
+      const mediaType = getMediaTypeForFile(pendingAttachment)
+      await sendMediaToSession(activeSessionId, mediaType, pendingAttachment)
+      setPendingAttachment(null)
+      setInputMessage("")
+      toast({
+        title: "Archivo enviado",
+        description: `Se envió ${pendingAttachment.name}`,
+      })
+    } catch (error) {
+      console.error("Error sending media:", error)
+      toast({
+        title: "Error",
+        description: "No se pudo enviar el archivo",
+        variant: "destructive",
+      })
+    } finally {
+      setIsUploadingMedia(false)
     }
   }
 
@@ -243,13 +348,13 @@ export default function ChatViewer() {
       })
       return
     }
-    
+
     try {
       // Formato internacional para WhatsApp
-      const formattedPhone = newPhoneNumber.startsWith('+') 
-        ? newPhoneNumber.replace(/\s+/g, '') 
+      const formattedPhone = newPhoneNumber.startsWith('+')
+        ? newPhoneNumber.replace(/\s+/g, '')
         : `+${newPhoneNumber.replace(/\s+/g, '')}`;
-      
+
       // 1. Guardar la información del cliente en la tabla de clientes
       const { error: clientError } = await supabase
         .from(table_records)
@@ -257,12 +362,12 @@ export default function ChatViewer() {
           telefono: formattedPhone,
           nombre: newClientName.trim()
         })
-      
+
       if (clientError) throw clientError
-      
+
       // 2. Crear un nuevo mensaje en la tabla de chat
       const timestamp = new Date().toISOString()
-      
+
       const newMessage = {
         session_id: formattedPhone,
         message: {
@@ -275,26 +380,26 @@ export default function ChatViewer() {
         },
         time: timestamp
       }
-      
+
       const { error: chatError } = await supabase
         .from(table_chat)
         .insert(newMessage)
-      
+
       if (chatError) throw chatError
-      
+
       // 3. Enviar el mensaje por WhatsApp
       await sendWhatsAppMessage(formattedPhone, newClientMessage.trim())
-      
+
       // 4. Actualizar la UI y limpiar el formulario
       setShowNewChatModal(false)
       setNewPhoneNumber("")
       setNewClientName("")
       setNewClientMessage("")
-      
+
       // 5. Cargar la conversación recién creada
       await fetchConversations(true)
       setActiveSessionId(formattedPhone)
-      
+
       toast({
         title: "Éxito",
         description: "Mensaje enviado correctamente",
@@ -309,51 +414,51 @@ export default function ChatViewer() {
     }
   }
 
-    const updateClientName = async () => {
-      if (!activeSessionId || !editingName.trim()) return;
-      
-      try {
-        const updates = {
-          numero: activeSessionId,
+  const updateClientName = async () => {
+    if (!activeSessionId || !editingName.trim()) return;
+
+    try {
+      const updates = {
+        numero: activeSessionId,
+        nombre: editingName.trim(),
+        tipo_cliente: editingTipoCliente || undefined,
+        categoria: editingCategoria || undefined
+      };
+
+      const { error } = await supabase
+        .from(table_records)
+        .upsert(updates)
+        .eq("numero", activeSessionId);
+
+      if (error) throw error;
+
+      // Actualizar el estado local
+      setClientsInfo(prev => ({
+        ...prev,
+        [activeSessionId]: {
           nombre: editingName.trim(),
           tipo_cliente: editingTipoCliente || undefined,
           categoria: editingCategoria || undefined
-        };
-        
-        const { error } = await supabase
-          .from(table_records)
-          .upsert(updates)
-          .eq("numero", activeSessionId);
-        
-        if (error) throw error;
-        
-        // Actualizar el estado local
-        setClientsInfo(prev => ({
-          ...prev,
-          [activeSessionId]: {
-            nombre: editingName.trim(),
-            tipo_cliente: editingTipoCliente || undefined,
-            categoria: editingCategoria || undefined
-          }
-        }));
-        
-        setShowEditNameModal(false);
-        
-        toast({
-          title: "Nombre actualizado",
-          description: "La información del cliente ha sido actualizada",
-          variant: "default",
-        });
-      } catch (error) {
-        console.error("Error updating client name:", error);
-        toast({
-          title: "Error",
-          description: "No se pudo actualizar la información del cliente",
-          variant: "destructive",
-        });
-      }
-    };
-  
+        }
+      }));
+
+      setShowEditNameModal(false);
+
+      toast({
+        title: "Nombre actualizado",
+        description: "La información del cliente ha sido actualizada",
+        variant: "default",
+      });
+    } catch (error) {
+      console.error("Error updating client name:", error);
+      toast({
+        title: "Error",
+        description: "No se pudo actualizar la información del cliente",
+        variant: "destructive",
+      });
+    }
+  };
+
   // Preparar datos al abrir el modal
   useEffect(() => {
     if (showEditNameModal && activeSessionId) {
@@ -368,86 +473,86 @@ export default function ChatViewer() {
   useEffect(() => {
     fetchConversations(true)
 
-  // Suscripción a cambios en la tabla de clientes
-  const clientsSubscription = supabase
-    .channel(`${table_records}_changes`)
-    .on(
-      "postgres_changes",
-      {
-        event: "*", // Escuchar todos los cambios (INSERT, UPDATE, DELETE)
-        schema: "public",
-        table: table_records,
-      },
-      (payload) => {
-        const clientData = payload.new as {numero: string, nombre: string, tipo_cliente?: string, Categoria?: string};
-        
-        // Actualizar la información del cliente en el estado
-        if (clientData && clientData.numero) {
-          setClientsInfo(prev => ({
-            ...prev,
-            [clientData.numero]: clientData
-          }));
-        }
-      },
-    )
-    .subscribe()
-  // Set up real-time subscription
-  const subscription = supabase
-    .channel(`${table_chat}_changes`)
-    .on(
-      "postgres_changes",
-      {
-        event: "INSERT",  // Solo escuchamos inserciones
-        schema: "public",
-        table: table_chat,
-      },
-      (payload) => {
-        const newMessage = payload.new as Message;
-        
-        // Si es un mensaje para la conversación activa, lo añadimos al estado
-        if (activeSessionId && newMessage.session_id === activeSessionId) {
-          setConversations(prevConversations => ({
-            ...prevConversations,
-            [activeSessionId]: [
-              ...(prevConversations[activeSessionId] || []),
-              newMessage
-            ]
-          }));
-        } 
-        // Si es un mensaje para otra conversación, actualizamos solo esa conversación
-        else if (newMessage.session_id) {
-          // Si ya tenemos esta conversación cargada, añadimos el mensaje
-          if (conversations[newMessage.session_id]) {
+    // Suscripción a cambios en la tabla de clientes
+    const clientsSubscription = supabase
+      .channel(`${table_records}_changes`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*", // Escuchar todos los cambios (INSERT, UPDATE, DELETE)
+          schema: "public",
+          table: table_records,
+        },
+        (payload) => {
+          const clientData = payload.new as { numero: string, nombre: string, tipo_cliente?: string, Categoria?: string };
+
+          // Actualizar la información del cliente en el estado
+          if (clientData && clientData.numero) {
+            setClientsInfo(prev => ({
+              ...prev,
+              [clientData.numero]: clientData
+            }));
+          }
+        },
+      )
+      .subscribe()
+    // Set up real-time subscription
+    const subscription = supabase
+      .channel(`${table_chat}_changes`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",  // Solo escuchamos inserciones
+          schema: "public",
+          table: table_chat,
+        },
+        (payload) => {
+          const newMessage = payload.new as Message;
+
+          // Si es un mensaje para la conversación activa, lo añadimos al estado
+          if (activeSessionId && newMessage.session_id === activeSessionId) {
             setConversations(prevConversations => ({
               ...prevConversations,
-              [newMessage.session_id]: [
-                ...(prevConversations[newMessage.session_id] || []),
+              [activeSessionId]: [
+                ...(prevConversations[activeSessionId] || []),
                 newMessage
               ]
             }));
-          } 
-          // Si es una conversación nueva, la cargamos
-          else {
-            fetchActiveConversation(newMessage.session_id);
           }
-        }
-      },
-    )
-    .subscribe()
+          // Si es un mensaje para otra conversación, actualizamos solo esa conversación
+          else if (newMessage.session_id) {
+            // Si ya tenemos esta conversación cargada, añadimos el mensaje
+            if (conversations[newMessage.session_id]) {
+              setConversations(prevConversations => ({
+                ...prevConversations,
+                [newMessage.session_id]: [
+                  ...(prevConversations[newMessage.session_id] || []),
+                  newMessage
+                ]
+              }));
+            }
+            // Si es una conversación nueva, la cargamos
+            else {
+              fetchActiveConversation(newMessage.session_id);
+            }
+          }
+        },
+      )
+      .subscribe()
 
     return () => {
       subscription.unsubscribe()
-      clientsSubscription.unsubscribe() 
+      clientsSubscription.unsubscribe()
     }
   }, [])
-  
+
   // Cargar el estado de activación cuando cambia la sesión activa
   useEffect(() => {
     if (activeSessionId) {
       fetchActivationStatus(activeSessionId)
     }
   }, [activeSessionId])
-  
+
 
 
   // Función para buscar en la base de datos
@@ -455,7 +560,7 @@ export default function ChatViewer() {
     if (searchTimeout) {
       clearTimeout(searchTimeout)
     }
-    
+
     // Configuramos un debounce para no hacer demasiadas peticiones
     const newTimeout = setTimeout(() => {
       if (searchQuery) {
@@ -466,35 +571,35 @@ export default function ChatViewer() {
         fetchConversations(true, "")
       }
     }, 500)
-    
+
     setSearchTimeout(newTimeout)
-    
+
     return () => {
       if (searchTimeout) {
         clearTimeout(searchTimeout)
       }
     }
   }, [searchQuery])
-  
+
   // Detector de scroll para cargar más conversaciones
   useEffect(() => {
     const handleScroll = () => {
       if (!conversationListRef.current || loadingMore || !hasMore) return
-      
+
       const { scrollTop, scrollHeight, clientHeight } = conversationListRef.current
       // Si hemos llegado al 80% del scroll, cargamos más
       if (scrollTop + clientHeight >= scrollHeight * 0.8) {
         fetchConversations(false)
       }
     }
-    
+
     const container = conversationListRef.current
     if (container) {
       container.addEventListener("scroll", handleScroll)
       return () => container.removeEventListener("scroll", handleScroll)
     }
   }, [conversationListRef, loadingMore, hasMore])
-  
+
   // Cargar una conversación específica
   const fetchActiveConversation = async (sessionId: string) => {
     try {
@@ -503,9 +608,9 @@ export default function ChatViewer() {
         .select("*")
         .eq("session_id", sessionId)
         .order("time", { ascending: true })
-      
+
       if (error) throw error
-      
+
       setConversations(prev => ({
         ...prev,
         [sessionId]: data || []
@@ -520,25 +625,25 @@ export default function ChatViewer() {
       })
     }
   }
-  
+
   // Cargar el estado de activación del chatbot
   const fetchActivationStatus = async (sessionId: string) => {
     try {
       setActivationStatusLoading(true)
-      
+
       const { data, error } = await supabase
         .from(table_active)
         .select("*")
         .eq("session_id", sessionId)
         .single()
-      
+
       if (error) {
         if (error.code === "PGRST116") { // No rows returned
           // Si no existe un registro, creamos uno con estado activo por defecto
           await supabase
             .from(table_active)
             .insert({ session_id: sessionId, is_active: true })
-          
+
           setIsBotActive(true)
         } else {
           throw error
@@ -546,7 +651,7 @@ export default function ChatViewer() {
       } else if (data) {
         setIsBotActive(data.is_active)
       }
-      
+
       setActivationStatusLoading(false)
     } catch (error) {
       console.error("Error fetching activation status:", error)
@@ -560,41 +665,41 @@ export default function ChatViewer() {
       setIsBotActive(true)
     }
   }
-  
+
   // Función para cambiar el estado de activación del chatbot
   const toggleChatbotStatus = async () => {
     if (!activeSessionId) return
-    
+
     try {
       setActivationStatusLoading(true)
-      
+
       // Si estamos desactivando el chatbot, mostramos el modal de recordatorio
       if (isBotActive) {
         setShowReminderModal(true)
       }
-      
+
       const newStatus = !isBotActive
-      
+
       // Actualizar en la base de datos
       const { error } = await supabase
         .from(table_active)
-        .upsert({ 
-          session_id: activeSessionId, 
-          is_active: newStatus 
+        .upsert({
+          session_id: activeSessionId,
+          is_active: newStatus
         })
-      
+
       if (error) throw error
-      
+
       setIsBotActive(newStatus)
-      
+
       toast({
         title: newStatus ? "Chatbot activado" : "Chatbot desactivado",
-        description: newStatus 
-          ? "El chatbot ahora responderá automáticamente" 
+        description: newStatus
+          ? "El chatbot ahora responderá automáticamente"
           : "Ahora puedes responder manualmente a los mensajes",
         variant: newStatus ? "default" : "destructive",
       })
-      
+
       setActivationStatusLoading(false)
     } catch (error) {
       console.error("Error toggling chatbot status:", error)
@@ -607,153 +712,163 @@ export default function ChatViewer() {
     }
   }
 
-// Función para enviar mensaje a WhatsApp
-const sendWhatsAppMessage = async (phoneNumber: string, message: string) => {
-  try {
-    console.log("Sending to:", phoneNumber);
-    console.log("Using URL:", WHATSAPP_API_URL);
-    console.log("Token length:", WHATSAPP_API_TOKEN.length);
-    
-    const response = await axios.post(
-      WHATSAPP_API_URL,
-      {
-        messaging_product: "whatsapp",
-        recipient_type: "individual",
-        to: phoneNumber,
-        type: "text",
-        text: {
-          body: message
-        }
-      },
-      {
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${WHATSAPP_API_TOKEN}`
-        }
-      }
-    );
-    
-    console.log("WhatsApp response:", response.data);
-    return response.data;
-  } catch (error) {
-    if (axios.isAxiosError(error)) {
-      console.error("WhatsApp API Error:", error.response?.data);
-      throw new Error(`WhatsApp API Error: ${error.response?.data?.error?.message || error.message}`);
-    }
-    throw error;
-  }
-};
+  // Función para enviar mensaje a WhatsApp
+  const sendWhatsAppMessage = async (phoneNumber: string, message: string) => {
+    try {
+      console.log("Sending to:", phoneNumber);
+      console.log("Using URL:", WHATSAPP_API_URL);
+      console.log("Token length:", WHATSAPP_API_TOKEN.length);
 
-  
+      const response = await axios.post(
+        WHATSAPP_API_URL,
+        {
+          messaging_product: "whatsapp",
+          recipient_type: "individual",
+          to: phoneNumber,
+          type: "text",
+          text: {
+            body: message
+          }
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${WHATSAPP_API_TOKEN}`
+          }
+        }
+      );
+
+      console.log("WhatsApp response:", response.data);
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        console.error("WhatsApp API Error:", error.response?.data);
+        throw new Error(`WhatsApp API Error: ${error.response?.data?.error?.message || error.message}`);
+      }
+      throw error;
+    }
+  };
+
+
   // Función para enviar mensaje manual
-// Modificar la función sendMessage
-const sendMessage = async () => {
-  if (!activeSessionId || !inputMessage.trim() || isBotActive) return
-  
-  try {
-    const timestamp = new Date().toISOString()
-    
-    // Crear el objeto de mensaje
-    const newMessage = {
-      session_id: activeSessionId,
-      message: {
-        type: "ai",
-        content: inputMessage.trim(),
-        tool_calls: [],
-        additional_kwargs: {},
-        response_metadata: {},
-        invalid_tool_calls: []
-      },
-      time: timestamp
-    }
-    
-    // Insertar en la base de datos
-    const { error } = await supabase
-      .from(table_chat)
-      .insert(newMessage)
-    
-    if (error) throw error
-    
-    // Extraer el número de teléfono del session_id (asumiendo que session_id es el número de WhatsApp)
-    const phoneNumber = activeSessionId
-    
-    // Enviar el mensaje a WhatsApp
-    if (phoneNumber) {
-      try {
-        await sendWhatsAppMessage(phoneNumber, inputMessage.trim())
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      } catch (whatsAppError) {
-        toast({
-          title: "Error",
-          description: "Failed to send message through WhatsApp API",
-          variant: "destructive",
-        })
-      }
-    }
-    
-    // Limpiar el input
-    setInputMessage("")
-    
-  } catch (error) {
-    console.error("Error sending message:", error)
-    toast({
-      title: "Error",
-      description: "Failed to send message",
-      variant: "destructive",
-    })
-  }
-}
+  // Modificar la función sendMessage
+  const sendMessage = async () => {
+    if (!activeSessionId || !inputMessage.trim() || isBotActive) return
 
-// Función para manejar envío de mensajes largos
-const handleSendMessage = async () => {
-  if (!activeSessionId || !nuevoMensaje.trim()) return;
-  
-  try {
-    setActivationStatusLoading(true);
-    
-    const timestamp = new Date().toISOString();
-    const newMessage = {
-      session_id: activeSessionId,
-      message: {
-        type: "ai",
-        content: nuevoMensaje.trim(),
-        tool_calls: [],
-        additional_kwargs: {},
-        response_metadata: {},
-        invalid_tool_calls: []
-      },
-      time: timestamp
-    };
-    
-    // Insertar en base de datos
-    const { error } = await supabase
-      .from(table_chat)
-      .insert(newMessage);
-    
-    if (error) throw error;
-    
-    // Enviar por WhatsApp
-    await sendWhatsAppMessage(activeSessionId, nuevoMensaje.trim());
-    
-    // Limpiar y cerrar modal
-    setNuevoMensaje("");
-    setShowNewMessageModal(false);
-    setActivationStatusLoading(false);
-    
-    toast({
-      title: "Mensaje enviado",
-      description: "El mensaje se ha enviado correctamente por WhatsApp",
-    });
-  } catch (error) {
-    console.error("Error sending message:", error);
-    setActivationStatusLoading(false);
-    toast({
-      title: "Error",
-      description: "No se pudo enviar el mensaje",
-      variant: "destructive",
-    });
+    try {
+      const timestamp = new Date().toISOString()
+
+      // Crear el objeto de mensaje
+      const newMessage = {
+        session_id: activeSessionId,
+        message: {
+          type: "ai",
+          content: inputMessage.trim(),
+          tool_calls: [],
+          additional_kwargs: {},
+          response_metadata: {},
+          invalid_tool_calls: []
+        },
+        time: timestamp
+      }
+
+      // Insertar en la base de datos
+      const { error } = await supabase
+        .from(table_chat)
+        .insert(newMessage)
+
+      if (error) throw error
+
+      // Extraer el número de teléfono del session_id (asumiendo que session_id es el número de WhatsApp)
+      const phoneNumber = activeSessionId
+
+      // Enviar el mensaje a WhatsApp
+      if (phoneNumber) {
+        try {
+          await sendWhatsAppMessage(phoneNumber, inputMessage.trim())
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        } catch (whatsAppError) {
+          toast({
+            title: "Error",
+            description: "Failed to send message through WhatsApp API",
+            variant: "destructive",
+          })
+        }
+      }
+
+      // Limpiar el input
+      setInputMessage("")
+
+    } catch (error) {
+      console.error("Error sending message:", error)
+      toast({
+        title: "Error",
+        description: "Failed to send message",
+        variant: "destructive",
+      })
+    }
   }
-};
+
+  // Función para manejar envío de mensajes largos
+  const handleSendMessage = async () => {
+    if (!activeSessionId || !nuevoMensaje.trim()) return;
+
+    try {
+      setActivationStatusLoading(true);
+
+      const timestamp = new Date().toISOString();
+      const newMessage = {
+        session_id: activeSessionId,
+        message: {
+          type: "ai",
+          content: nuevoMensaje.trim(),
+          tool_calls: [],
+          additional_kwargs: {},
+          response_metadata: {},
+          invalid_tool_calls: []
+        },
+        time: timestamp
+      };
+
+      // Insertar en base de datos
+      const { error } = await supabase
+        .from(table_chat)
+        .insert(newMessage);
+
+      if (error) throw error;
+
+      // Enviar por WhatsApp
+      await sendWhatsAppMessage(activeSessionId, nuevoMensaje.trim());
+
+      // Limpiar y cerrar modal
+      setNuevoMensaje("");
+      setShowNewMessageModal(false);
+      setActivationStatusLoading(false);
+
+      toast({
+        title: "Mensaje enviado",
+        description: "El mensaje se ha enviado correctamente por WhatsApp",
+      });
+    } catch (error) {
+      console.error("Error sending message:", error);
+      setActivationStatusLoading(false);
+      toast({
+        title: "Error",
+        description: "No se pudo enviar el mensaje",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleComposerSubmit = async () => {
+    if (pendingAttachment) {
+      await handleSendMedia()
+      return
+    }
+
+    if (!inputMessage.trim()) return
+    await sendMessage()
+  }
 
   // Filter conversations based on loaded data and sort by last message time
   const filteredConversations = Object.entries(conversations)
@@ -806,7 +921,7 @@ const handleSendMessage = async () => {
       {(!isMobile || mobileMenuOpen) && (
         <div
           ref={conversationListRef}
-        className={`${isMobile ? 'fixed inset-0 z-40 w-full' : 'w-[30%]'} bg-[var(--bg-color)] p-2 overflow-y-auto transition-all`}
+          className={`${isMobile ? 'fixed inset-0 z-40 w-full' : 'w-[30%]'} bg-[var(--bg-color)] p-2 overflow-y-auto transition-all`}
         >
           {/* Si mobile: Botón cierre */}
           {isMobile && (
@@ -848,15 +963,14 @@ const handleSendMessage = async () => {
                     key={sessionId}
                     onClick={() => {
                       setActiveSessionId(sessionId);
-                      if (isMobile) (window as any).requestAnimationFrame?.(() => {}), setTimeout(() => {}, 0);
+                      if (isMobile) (window as any).requestAnimationFrame?.(() => { }), setTimeout(() => { }, 0);
                       if (isMobile) (window as any) && (document.activeElement as HTMLElement)?.blur?.();
                       if (isMobile) (mobileMenuOpen);
                     }}
-                    className={`rounded-2xl p-3 mb-3 cursor-pointer flex items-center gap-3 transition-all ${
-                      isActive
+                    className={`rounded-2xl p-3 mb-3 cursor-pointer flex items-center gap-3 transition-all ${isActive
                         ? 'bg-[var(--secondary)] text-white'
                         : 'text-[var(--text-color)] hover:bg-slate-700 hover:text-white'
-                    }`}
+                      }`}
                   >
                     <div className="bg-[var(--card-bg)] text-[var(--text-color)] rounded-full w-10 h-10 flex items-center justify-center text-base shrink-0">
                       👤
@@ -898,7 +1012,7 @@ const handleSendMessage = async () => {
           {/* Header del Chat */}
           <div className="flex items-center justify-between p-3 border-b border-[var(--border-color)]">
             {/* Menu Mobile */}
-             {isMobile && (
+            {isMobile && (
               <button
                 onClick={() => setMobileMenuOpen(true)}
                 className="inline-flex text-[#dc0b2c]"
@@ -934,9 +1048,8 @@ const handleSendMessage = async () => {
                   </span>
                   {activeSessionId && (
                     <span
-                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-white text-[11px] h-5 ${
-                        isBotActive ? 'bg-[#dc0b2c]' : 'bg-emerald-600'
-                      }`}
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-white text-[11px] h-5 ${isBotActive ? 'bg-[#dc0b2c]' : 'bg-emerald-600'
+                        }`}
                     >
                       <span className={`i-lucide-${isBotActive ? 'bot' : 'user'} text-[14px]`} />
                       {isBotActive ? 'Bot activo' : 'Asesor activo'}
@@ -954,18 +1067,17 @@ const handleSendMessage = async () => {
                     onClick={toggleChatbotStatus}
                     disabled={activationStatusLoading}
                     title={isBotActive ? 'Pausar bot' : 'Reactivar bot'}
-                    className={`inline-flex items-center justify-center rounded-lg px-3 h-10 text-white disabled:bg-gray-500 disabled:text-gray-300 ${
-                      isBotActive
+                    className={`inline-flex items-center justify-center rounded-lg px-3 h-10 text-white disabled:bg-gray-500 disabled:text-gray-300 ${isBotActive
                         ? 'bg-amber-500 hover:bg-amber-600'
                         : 'bg-emerald-600 hover:bg-emerald-700'
-                    }`}
+                      }`}
                   >
                     {activationStatusLoading ? (
                       <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
                     ) : (
-                        isBotActive ? <Pause size={18} /> : <Play size={18} />
-                      )}
-                    </button>
+                      isBotActive ? <Pause size={18} /> : <Play size={18} />
+                    )}
+                  </button>
 
                   {!isBotActive && (
                     <button
@@ -984,8 +1096,8 @@ const handleSendMessage = async () => {
                 onClick={() => setShowNewChatModal(true)}
                 title="Nuevo chat"
                 className="inline-flex items-center justify-center rounded-lg px-3 h-10 bg-[#dc0b2c] text-white hover:bg-[#b91c1c]"
-                >
-                  <Plus size={18} />
+              >
+                <Plus size={18} />
               </button>
             </div>
           </div>
@@ -1008,23 +1120,46 @@ const handleSendMessage = async () => {
               </div>
             ) : (
               <div className="flex flex-col gap-1.5">
-                {activeConversation.map((msg: any) => (
-                  <div
-                    key={msg.id}
-                    className={`flex ${msg.message.type === 'human' ? 'justify-start' : 'justify-end'}`}
-                  >
-                    <div
-                      className={`${
-                        msg.message.type === 'human'
-                          ? 'bg-[var(--bubble-in)]'
-                          : 'bg-[var(--accent)] text-[var(--bubble-out-foreground)]'
-                      } px-3 py-2 rounded-2xl max-w-[70%] text-[14px] break-words shadow-[0_2px_8px_rgba(0,0,0,0.3)]`}
-                    >
-                      <div className="mb-1">{msg.message.content}</div>
-                      <span className="block text-right opacity-70 text-[11px]">{formatTime(msg.time!)}</span>
-                    </div>
+                {MEDIA_TEST_MODE ? (
+                  <div className="mb-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-200">
+                    Modo prueba multimedia activo
                   </div>
-                ))}
+                ) : null}
+                {activeConversation.map((msg: any) => {
+                  const messagePayload = normalizeMessagePayload(msg.message)
+                  const mediaUrl = getMessageMediaUrl(messagePayload)
+                  const isMediaMessage = Boolean(mediaUrl)
+                  const mediaCategory = messagePayload?.media?.kind || messagePayload?.type || "document"           
+                         const isHumanMessage = messagePayload?.type === 'human'
+
+                  return (
+                    <div
+                      key={msg.id}
+                      className={`flex ${isHumanMessage ? 'justify-start' : 'justify-end'}`}
+                    >
+                      <div
+                        className={`${isHumanMessage
+                            ? 'bg-[var(--bubble-in)]'
+                            : 'bg-[var(--accent)] text-[var(--bubble-out-foreground)]'
+                          } px-3 py-2 rounded-2xl max-w-[70%] text-[14px] break-words shadow-[0_2px_8px_rgba(0,0,0,0.3)]`}
+                      >
+                        {isMediaMessage ? (
+                          <div className="space-y-2">
+                            <MediaBubble
+                              media={{ kind: mediaCategory, url: mediaUrl, name: typeof messagePayload?.content === 'string' ? messagePayload.content : undefined }}
+                              caption={typeof messagePayload?.content === 'string' ? messagePayload.content : undefined}
+                              isAi={!isHumanMessage}
+                              darkMode={false}
+                            />
+                          </div>
+                        ) : (
+                          <div className="mb-1">{messagePayload?.content || ""}</div>
+                        )}
+                        <span className="block text-right opacity-70 text-[11px]">{formatTime(msg.time!)}</span>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -1041,38 +1176,31 @@ const handleSendMessage = async () => {
                 <button
                   disabled
                   className="rounded-xl min-w-12 h-14 bg-slate-700 flex items-center justify-center"
-                  >
-                    <Send size={24} className="text-slate-400" />
+                >
+                  <Send size={24} className="text-slate-400" />
                 </button>
               </div>
             ) : (
-              <div className="flex gap-2">
-                <textarea
-                  value={inputMessage}
-                  onChange={(e) => setInputMessage(e.target.value)}
-                  onKeyDown={(e) => {
-                    if ((e as any).key === 'Enter' && !(e as any).shiftKey) {
-                      e.preventDefault();
-                      sendMessage();
-                    }
-                  }}
-                  placeholder={activeSessionId ? 'Responder como asesor...' : 'Selecciona una conversación para responder'}
-                  disabled={activationStatusLoading || !activeSessionId}
-                  rows={1}
-                  className="w-full max-h-28 rounded-xl bg-slate-800 text-white px-4 py-3 outline-none border border-slate-700 focus:border-[#dc0b2c] disabled:bg-slate-700 disabled:text-slate-400"
-                />
-                <button
-                  onClick={sendMessage}
-                  disabled={!inputMessage?.trim?.() || activationStatusLoading || !activeSessionId}
-                  className="rounded-xl min-w-12 self-end h-12 bg-[#dc0b2c] text-white hover:bg-[#b91c1c] disabled:bg-gray-500 disabled:text-gray-300 flex items-center justify-center"
-                >
-                  {activationStatusLoading ? (
-                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                  ) : (
-                    <span className="i-lucide-send" />
-                  )}
-                </button>
-              </div>
+              <MediaComposer
+                darkMode={false}
+                pendingAttachment={pendingAttachment}
+                onAttachmentSelected={handleAttachFile}
+                onRemoveAttachment={() => setPendingAttachment(null)}
+                onSend={handleComposerSubmit}
+                inputMessage={inputMessage}
+                onInputChange={setInputMessage}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    handleComposerSubmit();
+                  }
+                }}
+                disabled={activationStatusLoading || !activeSessionId}
+                isUploadingMedia={isUploadingMedia}
+                activationStatusLoading={activationStatusLoading}
+                isBotActive={isBotActive}
+                testMode={MEDIA_TEST_MODE}
+              />
             )}
           </div>
         </div>
