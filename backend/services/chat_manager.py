@@ -98,7 +98,20 @@ def upload_media(file_stream, filename: str, mime_type: str) -> str:
 
     return media_id
    
+def normalize_media_type(media_type: str | None, mime_type: str | None = None) -> str:
+    value = (media_type or mime_type or "").lower().strip()
 
+    if value in {"image", "audio", "video", "document"}:
+        return value
+
+    if value.startswith("image/"):
+        return "image"
+    if value.startswith("audio/"):
+        return "audio"
+    if value.startswith("video/"):
+        return "video"
+
+    return "document"
 def send_media_message_to_whatsapp(to: str, media_id: str, media_type: str):
     whatsapp_api_base = (WHATSAPP_API_URL or "https://graph.facebook.com/v20.0").rstrip("/")
     phone_number_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
@@ -378,7 +391,6 @@ async def ingest_inbound_media_message(payload: Dict[str, Any], internal_token: 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error procesando media entrante: {e}")
 
-
 async def send_media_message_to_session(session_id: str, file: UploadFile, media_type: str):
     is_active = await get_bot_status(session_id)
     if is_active:
@@ -390,6 +402,8 @@ async def send_media_message_to_session(session_id: str, file: UploadFile, media
     safe_filename = sanitize_storage_filename(file.filename, timestamp_id)
     path = f"chat/{session_id}/{timestamp_id}-{safe_filename}"
     mime_type = file.content_type or "application/octet-stream"
+
+    wa_media_type = normalize_media_type(media_type, mime_type)
 
     try:
         storage_client = supabase.client.storage.from_("media")
@@ -416,13 +430,13 @@ async def send_media_message_to_session(session_id: str, file: UploadFile, media
         raise HTTPException(status_code=500, detail=f"Error subiendo archivo: {e}")
 
     try:
-        media_id = upload_media(file_bytes, file.filename, file.content_type)
-        send_media_message_to_whatsapp(session_id, media_id, media_type)
+        media_id = upload_media(file_bytes, file.filename, mime_type)
+        send_media_message_to_whatsapp(session_id, media_id, wa_media_type)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error enviando multimedia a WhatsApp: {e}")
 
     message_payload = {
-        "type": media_type,
+        "type": wa_media_type,
         "content": f"Archivo enviado ({file.filename})",
         "mediaUrl": public_url,
         "tool_calls": [],
@@ -433,6 +447,7 @@ async def send_media_message_to_session(session_id: str, file: UploadFile, media
 
     result = await persist_message(session_id, message_payload)
     return {"status": "media_sent", "mediaUrl": public_url, "data": result.data}
+
 async def get_bot_status(session_id: str):
     """Obtiene el estado actual del bot para una sesión específica"""
     try:
