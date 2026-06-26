@@ -362,16 +362,18 @@ async def get_bot_status(session_id: str):
 def persist_message(session_id: str, message_payload: dict):
     timestamp = datetime.utcnow().isoformat()
     try:
+        message_value = message_payload if isinstance(message_payload, str) else json.dumps(message_payload, ensure_ascii=False)
+
         response = supabase.client.table("n8n_chat_pravi").insert({
             "session_id": session_id,
-            "message": json.dumps(message_payload),
-            "time": timestamp
+            "message": message_value,
+            "time": timestamp,
         }).execute()
+
         return response
     except Exception as e:
         print(f"Error persisting message: {e}")
         raise
-
 # SI en algún momento queremos recuperar un archivo que fue enviado por el usuario y solo tienes el media_id.
 #def get_media_url(media_id: str) -> str:
 #    url = f"{WHATSAPP_API_URL}/{media_id}"
