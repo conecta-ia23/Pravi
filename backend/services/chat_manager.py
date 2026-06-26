@@ -514,13 +514,20 @@ async def send_media_message_to_session(session_id: str, file: UploadFile, media
         raise HTTPException(status_code=500, detail=f"Error enviando multimedia a WhatsApp: {e}")
 
     message_payload = {
-        "type": wa_media_type,
+        "type": "ai",
         "content": f"Archivo enviado ({upload_filename})",
+        "media": {
+            "kind": wa_media_type,
+            "url": public_url,
+            "mime": mime_type,
+            "name": upload_filename,
+            "size": len(file_bytes),
+        },
         "mediaUrl": public_url,
         "tool_calls": [],
         "additional_kwargs": {},
         "response_metadata": {},
-        "invalid_tool_calls": []
+        "invalid_tool_calls": [],
     }
 
     result = persist_message(session_id, message_payload)
@@ -528,9 +535,8 @@ async def send_media_message_to_session(session_id: str, file: UploadFile, media
     return {
         "status": "media_sent",
         "mediaUrl": public_url,
-        "data": result.data
+        "data": result.data,
     }
-
 
 async def get_bot_status(session_id: str):
     """Obtiene el estado actual del bot para una sesión específica"""
