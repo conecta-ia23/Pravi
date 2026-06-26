@@ -276,14 +276,8 @@ export default function ChatViewer() {
     setPendingAttachment(file)
   }
 
-const handleSendMedia = async () => {
-  if (!activeSessionId || !pendingAttachment || isUploadingMedia || isBotActive) return;
-
-  const attachmentToSend = pendingAttachment;
-
-  // Limpiamos visualmente de inmediato para que no quede pegado en pantalla
-  setPendingAttachment(null);
-  setInputMessage("");
+const handleSendMedia = async (attachmentToSend: File) => {
+  if (!activeSessionId || isUploadingMedia || isBotActive) return;
 
   try {
     setIsUploadingMedia(true);
@@ -868,15 +862,21 @@ const handleSendMedia = async () => {
     }
   };
 
-  const handleComposerSubmit = async () => {
-    if (pendingAttachment) {
-      await handleSendMedia()
-      return
-    }
+ const handleComposerSubmit = async () => {
+  if (pendingAttachment) {
+    const attachmentToSend = pendingAttachment;
 
-    if (!inputMessage.trim()) return
-    await sendMessage()
+    // Limpiar visualmente inmediatamente
+    setPendingAttachment(null);
+    setInputMessage("");
+
+    await handleSendMedia(attachmentToSend);
+    return;
   }
+
+  if (!inputMessage.trim()) return;
+  await sendMessage();
+};
 
   // Filter conversations based on loaded data and sort by last message time
   const filteredConversations = Object.entries(conversations)
