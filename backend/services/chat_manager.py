@@ -227,19 +227,31 @@ def upload_inbound_media_to_storage(file_bytes: bytes, session_id: str, media_id
 
     try:
         storage_client = supabase.client.storage.from_(DEFAULT_STORAGE_BUCKET)
-        storage_client.upload(storage_path, file_bytes)
+
+        storage_client.upload(
+            storage_path,
+            file_bytes,
+            file_options={
+                "content-type": mime_type or "application/octet-stream",
+                "cache-control": "3600",
+                "upsert": "true",
+            }
+        )
+
         public_url_response = storage_client.get_public_url(storage_path)
+
         if isinstance(public_url_response, dict):
             public_url = public_url_response.get("publicUrl") or public_url_response.get("public_url")
         else:
             public_url = public_url_response
+
         if not public_url:
             raise Exception("No public URL returned")
+
         return str(public_url)
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error subiendo archivo a Supabase Storage: {e}")
-
-
 def build_inbound_media_payload(public_url: str, kind: str, mime_type: str, filename: str, file_bytes: bytes, media_id: str) -> Dict[str, Any]:
     return {
         "url": public_url,
@@ -372,6 +384,7 @@ def persist_message(session_id: str, message_payload: dict):
     except Exception as e:
         print(f"Error persisting message: {e}")
         raise
+    
 # SI en algún momento queremos recuperar un archivo que fue enviado por el usuario y solo tienes el media_id.
 #def get_media_url(media_id: str) -> str:
 #    url = f"{WHATSAPP_API_URL}/{media_id}"
