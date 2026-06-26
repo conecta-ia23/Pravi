@@ -362,11 +362,9 @@ async def get_bot_status(session_id: str):
 def persist_message(session_id: str, message_payload: dict):
     timestamp = datetime.utcnow().isoformat()
     try:
-        message_value = message_payload if isinstance(message_payload, str) else json.dumps(message_payload, ensure_ascii=False)
-
         response = supabase.client.table("n8n_chat_pravi").insert({
             "session_id": session_id,
-            "message": message_value,
+            "message": message_payload,
             "time": timestamp,
         }).execute()
 
