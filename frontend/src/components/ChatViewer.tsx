@@ -281,6 +281,10 @@ const handleSendMedia = async () => {
 
   const attachmentToSend = pendingAttachment;
 
+  // Limpiamos visualmente de inmediato para que no quede pegado en pantalla
+  setPendingAttachment(null);
+  setInputMessage("");
+
   try {
     setIsUploadingMedia(true);
 
@@ -314,9 +318,6 @@ const handleSendMedia = async () => {
         [activeSessionId]: [...(prev[activeSessionId] || []), simulatedMessage],
       }));
 
-      setPendingAttachment(null);
-      setInputMessage("");
-
       toast({
         title: "Modo prueba",
         description: `Se simuló el adjunto ${attachmentToSend.name}`,
@@ -328,9 +329,6 @@ const handleSendMedia = async () => {
     const mediaType = getMediaTypeForFile(attachmentToSend);
 
     await sendMediaToSession(activeSessionId, mediaType, attachmentToSend);
-
-    setPendingAttachment(null);
-    setInputMessage("");
 
     toast({
       title: "Archivo enviado",
@@ -348,7 +346,6 @@ const handleSendMedia = async () => {
     setIsUploadingMedia(false);
   }
 };
-
 
   const createNewChat = async () => {
     if (!newPhoneNumber.trim() || !newClientName.trim() || !newClientMessage.trim()) {
