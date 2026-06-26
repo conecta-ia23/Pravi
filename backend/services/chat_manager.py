@@ -3,6 +3,9 @@ from datetime import datetime
 from fastapi import UploadFile, HTTPException
 import requests
 import json
+import subprocess
+import tempfile
+from pathlib import Path
 import os
 import re
 import unicodedata
@@ -195,10 +198,17 @@ async def send_advisor_message_to_session(session_id: str, message: str):
     await send_whatsapp_message(session_id, message)
     return {"status": "message_sent", "data": result.data}
 
-
 ALLOWED_TYPES = {"image/jpeg", "image/png", "application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
 MAX_FILE_SIZE = 30 * 1024 * 1024  # 30MB
 
+SUPPORTED_AUDIO_MIME_TYPES = {
+    "audio/aac",
+    "audio/mp4",
+    "audio/mpeg",
+    "audio/amr",
+    "audio/ogg",
+    "audio/opus",
+}
 
 def validate_inbound_media_payload(payload: Dict[str, Any]) -> None:
     if not isinstance(payload, dict):
@@ -390,6 +400,66 @@ async def ingest_inbound_media_message(payload: Dict[str, Any], internal_token: 
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error procesando media entrante: {e}")
+    
+
+
+def convert_audio_to_mp3(file_bytes: bytes, filename: str) -> tuple[bytes, str, str]:
+    original_suffix = Path(filename or "audio").suffix or ".audio"
+    output_filename = f"{Path(filename or 'audio').stem}.mp3"
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=original_suffix) as input_file:
+        input_file.write(file_bytes)
+        input_path = input_file.name
+
+    output_path = f"{input_path}.mp3"
+
+    try:
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-i",
+                input_path,
+                "-vn",
+                "-ar",
+                "44100",
+                "-ac",
+                "1",
+                "-b:a",
+                "128k",
+                output_path,
+            ],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+        with open(output_path, "rb") as converted_file:
+            converted_bytes = converted_file.read()
+
+        return converted_bytes, output_filename, "audio/mpeg"
+
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=500,
+            detail="FFmpeg no está instalado en api-pravi. No se puede convertir este audio."
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"No se pudo convertir el audio a MP3: {e}"
+        )
+    finally:
+        try:
+            os.remove(input_path)
+        except Exception:
+            pass
+
+        try:
+            os.remove(output_path)
+        except Exception:
+            pass
+
 
 async def send_media_message_to_session(session_id: str, file: UploadFile, media_type: str):
     is_active = await get_bot_status(session_id)
@@ -398,12 +468,19 @@ async def send_media_message_to_session(session_id: str, file: UploadFile, media
 
     file_bytes = await file.read()
 
-    timestamp_id = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
-    safe_filename = sanitize_storage_filename(file.filename, timestamp_id)
-    path = f"chat/{session_id}/{timestamp_id}-{safe_filename}"
-    mime_type = file.content_type or "application/octet-stream"
+    if len(file_bytes) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=400, detail="Archivo demasiado grande (máx 30MB)")
 
+    mime_type = file.content_type or "application/octet-stream"
     wa_media_type = normalize_media_type(media_type, mime_type)
+    upload_filename = file.filename or "archivo"
+
+    if wa_media_type == "audio" and mime_type not in SUPPORTED_AUDIO_MIME_TYPES:
+        file_bytes, upload_filename, mime_type = convert_audio_to_mp3(file_bytes, upload_filename)
+
+    timestamp_id = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
+    safe_filename = sanitize_storage_filename(upload_filename, timestamp_id)
+    path = f"chat/{session_id}/{timestamp_id}-{safe_filename}"
 
     try:
         storage_client = supabase.client.storage.from_("media")
@@ -418,6 +495,7 @@ async def send_media_message_to_session(session_id: str, file: UploadFile, media
         )
 
         public_url_response = storage_client.get_public_url(path)
+
         if isinstance(public_url_response, dict):
             public_url = public_url_response.get("publicUrl") or public_url_response.get("public_url")
         else:
@@ -430,14 +508,14 @@ async def send_media_message_to_session(session_id: str, file: UploadFile, media
         raise HTTPException(status_code=500, detail=f"Error subiendo archivo: {e}")
 
     try:
-        media_id = upload_media(file_bytes, file.filename, mime_type)
+        media_id = upload_media(file_bytes, upload_filename, mime_type)
         send_media_message_to_whatsapp(session_id, media_id, wa_media_type)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error enviando multimedia a WhatsApp: {e}")
 
     message_payload = {
         "type": wa_media_type,
-        "content": f"Archivo enviado ({file.filename})",
+        "content": f"Archivo enviado ({upload_filename})",
         "mediaUrl": public_url,
         "tool_calls": [],
         "additional_kwargs": {},
@@ -445,8 +523,14 @@ async def send_media_message_to_session(session_id: str, file: UploadFile, media
         "invalid_tool_calls": []
     }
 
-    result = await persist_message(session_id, message_payload)
-    return {"status": "media_sent", "mediaUrl": public_url, "data": result.data}
+    result = persist_message(session_id, message_payload)
+
+    return {
+        "status": "media_sent",
+        "mediaUrl": public_url,
+        "data": result.data
+    }
+
 
 async def get_bot_status(session_id: str):
     """Obtiene el estado actual del bot para una sesión específica"""
