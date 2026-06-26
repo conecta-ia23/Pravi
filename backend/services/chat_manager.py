@@ -55,28 +55,64 @@ async def get_new_messages_since(since: str):
 
 
 def upload_media(file_stream, filename: str, mime_type: str) -> str:
-    url = f"{WHATSAPP_API_URL}/media"
+    whatsapp_api_base = (WHATSAPP_API_URL or "https://graph.facebook.com/v20.0").rstrip("/")
+    phone_number_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
+
+    if not WHATSAPP_ACCESS_TOKEN or not phone_number_id:
+        raise Exception("Configuración de WhatsApp incompleta para subir multimedia")
+
+    url = f"{whatsapp_api_base}/{phone_number_id}/media"
+
     headers = {
-        "Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}",
+        "Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}"
     }
+
     files = {
-        "file": (filename, file_stream, mime_type),
+        "file": (
+            filename or "archivo",
+            file_stream,
+            mime_type or "application/octet-stream"
+        )
     }
+
     data = {
-        "messaging_product": "whatsapp",
-        "type": mime_type,
+        "messaging_product": "whatsapp"
     }
-    response = requests.post(url, headers=headers, files=files, data=data)
-    response.raise_for_status()
-    media_id = response.json().get("id")
+
+    response = requests.post(
+        url,
+        headers=headers,
+        data=data,
+        files=files,
+        timeout=30
+    )
+
+    if not response.ok:
+        raise Exception(f"{response.status_code} {response.text}")
+
+    response_data = response.json()
+    media_id = response_data.get("id")
+
+    if not media_id:
+        raise Exception(f"No se recibió media_id desde WhatsApp: {response_data}")
+
     return media_id
+   
 
 def send_media_message_to_whatsapp(to: str, media_id: str, media_type: str):
-    url = f"{WHATSAPP_API_URL}/messages"
+    whatsapp_api_base = (WHATSAPP_API_URL or "https://graph.facebook.com/v20.0").rstrip("/")
+    phone_number_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
+
+    if not WHATSAPP_ACCESS_TOKEN or not phone_number_id:
+        raise Exception("Configuración de WhatsApp incompleta para enviar multimedia")
+
+    url = f"{whatsapp_api_base}/{phone_number_id}/messages"
+
     headers = {
         "Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}",
         "Content-Type": "application/json",
     }
+
     payload = {
         "messaging_product": "whatsapp",
         "to": to,
@@ -85,18 +121,30 @@ def send_media_message_to_whatsapp(to: str, media_id: str, media_type: str):
             "id": media_id
         }
     }
-    response = requests.post(url, headers=headers, json=payload)
-    response.raise_for_status()
+
+    response = requests.post(url, headers=headers, json=payload, timeout=30)
+
+    if not response.ok:
+        raise Exception(f"{response.status_code} {response.text}")
+
     return response.json()
 
 async def send_whatsapp_message(phone_number: str, message: str):
-    """Envía mensaje a WhatsApp usando la API de Meta (adaptado de Ditto)"""
+    """Envía mensaje de texto a WhatsApp usando la API de Meta."""
     try:
+        whatsapp_api_base = (WHATSAPP_API_URL or "https://graph.facebook.com/v20.0").rstrip("/")
+        phone_number_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
+
+        if not WHATSAPP_ACCESS_TOKEN or not phone_number_id:
+            raise Exception("Configuración de WhatsApp incompleta para enviar mensaje")
+
+        url = f"{whatsapp_api_base}/{phone_number_id}/messages"
+
         response = requests.post(
-            WHATSAPP_API_URL,
+            url,
             json={
                 "messaging_product": "whatsapp",
-                "recipient_type": "individual", 
+                "recipient_type": "individual",
                 "to": phone_number,
                 "type": "text",
                 "text": {"body": message}
@@ -104,13 +152,17 @@ async def send_whatsapp_message(phone_number: str, message: str):
             headers={
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}"
-            }
+            },
+            timeout=30
         )
-        response.raise_for_status()
+
+        if not response.ok:
+            raise Exception(f"{response.status_code} {response.text}")
+
         return response.json()
+
     except Exception as e:
-        print(f"Error sending WhatsApp message: {e}")
-        raise
+        raise Exception(f"Error enviando mensaje a WhatsApp: {e}")
 
 async def send_advisor_message_to_session(session_id: str, message: str):
     is_active = await get_bot_status(session_id)
