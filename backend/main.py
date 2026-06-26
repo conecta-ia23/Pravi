@@ -15,7 +15,7 @@ from routes.clients import router as clients_router
 from tasks.polling import schedule_polling
 from routes import dashboard
 from routes import table_data
-from routes.chats import router as chat_router
+from routes.chats import router as chat_router, media_inbound_router
 
 
 app = FastAPI(title="VISOR-PRAVI API", version="1.0.0")
@@ -35,6 +35,7 @@ app.include_router(table_router)
 app.include_router(cotizaciones_router)
 app.include_router(clients_router)
 app.include_router(chat_router)
+app.include_router(media_inbound_router)
 
 # Scheduler APScheduler
 scheduler = AsyncIOScheduler()

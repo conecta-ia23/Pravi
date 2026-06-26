@@ -1,16 +1,19 @@
 from services.database_manager import SupabaseManager
 from datetime import datetime
-from fastapi import UploadFile
+from fastapi import UploadFile, HTTPException
 import requests
 import json
 import os
-from fastapi import HTTPException
+from typing import Optional, Any, Dict
 
 #Configuración WhatsApp (agregar a tus variables de entorno)
 WHATSAPP_API_URL = os.getenv("WHATSAPP_API_URL")
 WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
 
 supabase = SupabaseManager()
+
+ALLOWED_MEDIA_KINDS = {"image", "audio", "video", "document"}
+DEFAULT_STORAGE_BUCKET = "media"
 
 async def get_active_conversations():
     response = supabase.client.table("n8n_chat_pravi")\
@@ -128,6 +131,170 @@ async def send_advisor_message_to_session(session_id: str, message: str):
 
 ALLOWED_TYPES = {"image/jpeg", "image/png", "application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
 MAX_FILE_SIZE = 30 * 1024 * 1024  # 30MB
+
+
+def validate_inbound_media_payload(payload: Dict[str, Any]) -> None:
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Payload inválido")
+
+    session_id = str(payload.get("session_id") or "").strip()
+    media_id = str(payload.get("media_id") or "").strip()
+    kind = str(payload.get("kind") or "").strip().lower()
+
+    if not session_id:
+        raise HTTPException(status_code=400, detail="session_id es requerido")
+    if not media_id:
+        raise HTTPException(status_code=400, detail="media_id es requerido")
+    if kind not in ALLOWED_MEDIA_KINDS:
+        raise HTTPException(status_code=400, detail="kind inválido")
+
+
+def find_existing_inbound_media_message(session_id: str, media_id: str) -> Optional[Dict[str, Any]]:
+    try:
+        response = supabase.client.table("n8n_chat_pravi")\
+            .select("id, message")\
+            .eq("session_id", session_id)\
+            .execute()
+    except Exception as e:
+        print(f"Error querying existing inbound media messages: {e}")
+        return None
+
+    for row in response.data or []:
+        message_payload = row.get("message")
+        parsed_payload: Optional[Dict[str, Any]] = None
+        if isinstance(message_payload, str):
+            try:
+                parsed_payload = json.loads(message_payload)
+            except json.JSONDecodeError:
+                continue
+        elif isinstance(message_payload, dict):
+            parsed_payload = message_payload
+
+        if isinstance(parsed_payload, dict):
+            media_payload = parsed_payload.get("media")
+            if isinstance(media_payload, dict) and media_payload.get("whatsapp_media_id") == media_id:
+                return row
+
+    return None
+
+
+def get_whatsapp_media_url(media_id: str) -> str:
+    if not WHATSAPP_API_URL or not WHATSAPP_ACCESS_TOKEN:
+        raise HTTPException(status_code=500, detail="Configuración de WhatsApp incompleta")
+
+    url = f"{WHATSAPP_API_URL}/{media_id}"
+    try:
+        response = requests.get(
+            url,
+            headers={"Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}"},
+            timeout=30,
+        )
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail=f"No se pudo resolver la URL temporal del archivo: {exc}") from exc
+
+    payload = response.json()
+    if isinstance(payload, dict):
+        media_url = payload.get("url")
+        if media_url:
+            return media_url
+        data_payload = payload.get("data")
+        if isinstance(data_payload, dict):
+            media_url = data_payload.get("url")
+            if media_url:
+                return media_url
+
+    raise HTTPException(status_code=502, detail="No se pudo resolver la URL temporal del archivo")
+
+
+def download_whatsapp_media(media_url: str) -> bytes:
+    try:
+        response = requests.get(media_url, timeout=30)
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail=f"No se pudo descargar el archivo desde WhatsApp: {exc}") from exc
+    return response.content
+
+
+def upload_inbound_media_to_storage(file_bytes: bytes, session_id: str, media_id: str, filename: str, mime_type: str) -> str:
+    safe_filename = "".join(ch for ch in (filename or f"media-{media_id}") if ch.isalnum() or ch in "._-") or f"media-{media_id}"
+    storage_path = f"whatsapp-inbound/{session_id}/{media_id}-{safe_filename}"
+
+    try:
+        storage_client = supabase.client.storage.from_(DEFAULT_STORAGE_BUCKET)
+        storage_client.upload(storage_path, file_bytes)
+        public_url_response = storage_client.get_public_url(storage_path)
+        if isinstance(public_url_response, dict):
+            public_url = public_url_response.get("publicUrl") or public_url_response.get("public_url")
+        else:
+            public_url = public_url_response
+        if not public_url:
+            raise Exception("No public URL returned")
+        return str(public_url)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error subiendo archivo a Supabase Storage: {e}")
+
+
+def build_inbound_media_payload(public_url: str, kind: str, mime_type: str, filename: str, file_bytes: bytes, media_id: str) -> Dict[str, Any]:
+    return {
+        "url": public_url,
+        "kind": kind,
+        "mime": mime_type or "application/octet-stream",
+        "name": filename,
+        "size": len(file_bytes),
+        "whatsapp_media_id": media_id,
+    }
+
+
+async def ingest_inbound_media_message(payload: Dict[str, Any], internal_token: Optional[str] = None) -> Dict[str, Any]:
+    expected_token = os.getenv("INTERNAL_MEDIA_TOKEN")
+    if not expected_token or internal_token != expected_token:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    validate_inbound_media_payload(payload)
+
+    session_id = str(payload.get("session_id") or "").strip()
+    media_id = str(payload.get("media_id") or "").strip()
+    kind = str(payload.get("kind") or "").strip().lower()
+    mime = str(payload.get("mime") or "").strip()
+    filename = str(payload.get("filename") or f"{kind}-{media_id}").strip()
+    caption = str(payload.get("caption") or "").strip()
+
+    existing_message = find_existing_inbound_media_message(session_id, media_id)
+    if existing_message:
+        return {
+            "success": True,
+            "status": "already_exists",
+            "media": existing_message.get("message") and json.loads(existing_message.get("message")) if isinstance(existing_message.get("message"), str) else None,
+            "message_id": existing_message.get("id"),
+        }
+
+    try:
+        media_url = get_whatsapp_media_url(media_id)
+        file_bytes = download_whatsapp_media(media_url)
+        public_url = upload_inbound_media_to_storage(file_bytes, session_id, media_id, filename, mime)
+        media_payload = build_inbound_media_payload(public_url, kind, mime, filename, file_bytes, media_id)
+        message_payload = {
+            "type": "human",
+            "media": media_payload,
+            "content": caption or "",
+        }
+        result = persist_message(session_id, message_payload)
+        message_id = None
+        if getattr(result, "data", None):
+            message_id = result.data[0].get("id") if isinstance(result.data[0], dict) else None
+        return {
+            "success": True,
+            "status": "created",
+            "media": media_payload,
+            "message_id": message_id,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error procesando media entrante: {e}")
+
+
 async def send_media_message_to_session(session_id: str, file: UploadFile, media_type: str):
     if media_type not in ALLOWED_TYPES:
         raise HTTPException(status_code=400, detail="Tipo de archivo no permitido")

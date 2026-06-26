@@ -1,12 +1,13 @@
-from fastapi import APIRouter, Body, Query, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, Body, Query, UploadFile, File, Form, HTTPException, Header
 from schemas.chat import BotActivationRequest, AdvisorMessageRequest
 from services.chat_manager import (get_active_conversations , 
                                    get_conversations_messages,
                                    get_bot_status, 
                                    get_new_messages_since, send_advisor_message_to_session, 
-                                   send_media_message_to_session, supabase )
+                                   send_media_message_to_session, ingest_inbound_media_message, supabase )
 
 router = APIRouter(prefix="/chat", tags=["Chat Viewer"])
+media_inbound_router = APIRouter(tags=["Media Inbound"])
 
 @router.get("/conversation")
 async def list_conversations():
@@ -63,6 +64,20 @@ async def send_media(
     file: UploadFile = File(...)
 ):
     return await send_media_message_to_session(session_id, file, media_type)
+
+@router.post("/media/inbound")
+async def inbound_media_chat(
+    payload: dict = Body(...),
+    x_internal_token: str | None = Header(None, alias="X-Internal-Token")
+):
+    return await ingest_inbound_media_message(payload, x_internal_token)
+
+@media_inbound_router.post("/media/inbound")
+async def inbound_media_root(
+    payload: dict = Body(...),
+    x_internal_token: str | None = Header(None, alias="X-Internal-Token")
+):
+    return await ingest_inbound_media_message(payload, x_internal_token)
 
 
 #Futura mejora// no se si funcione pero por ahora no se implementará, a menos que sea necesaria de urgencia
