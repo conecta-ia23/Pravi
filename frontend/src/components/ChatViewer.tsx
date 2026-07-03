@@ -1,44 +1,69 @@
-import { useState, useEffect, useRef } from "react";
-import axios from "axios"
+import { useState, useEffect, useLayoutEffect, useRef } from "react";
+import axios from "axios";
 import { Pause, Play, Plus, Send } from "lucide-react";
 import { useMediaQuery } from "@mui/material";
-import { createClient } from "@supabase/supabase-js"
+import { createClient } from "@supabase/supabase-js";
 import { useTheme } from "@mui/material/styles";
 import { useToast } from "../hooks/use-toast";
 import { sendMediaToSession } from "../services/api";
 import { MediaBubble } from "./MediaBubble";
 import { MediaComposer } from "./MediaComposer";
-import { createLocalPreviewUrl, getMediaTypeForFile, validateMediaFile } from "../lib/mediaUpload";
+import {
+  createLocalPreviewUrl,
+  getMediaTypeForFile,
+  validateMediaFile,
+} from "../lib/mediaUpload";
 
 // Configuración de WhatsApp API
-const WHATSAPP_API_URL = import.meta.env.VITE_WHATSAPP_API_URL || ""
-const WHATSAPP_API_TOKEN = import.meta.env.VITE_WHATSAPP_API_TOKEN || ""
-const MEDIA_TEST_MODE = String(import.meta.env.VITE_MEDIA_TEST_MODE || "").toLowerCase() === "true"
-// Initialize Supabase client
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || ""
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || ""
-const supabase = createClient(supabaseUrl, supabaseKey)
+const WHATSAPP_API_URL = import.meta.env.VITE_WHATSAPP_API_URL || "";
+const WHATSAPP_API_TOKEN = import.meta.env.VITE_WHATSAPP_API_TOKEN || "";
+const MEDIA_TEST_MODE =
+  String(import.meta.env.VITE_MEDIA_TEST_MODE || "").toLowerCase() === "true";
 
-const table_chat = "n8n_chat_pravi"
-const table_active = "chat_activation_pravi"
-const table_records = "clients_pravi" //tabla con los registros, cuando este cargado el nombre mostrarlo
+// Initialize Supabase client
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "";
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+const table_chat = "n8n_chat_pravi";
+const table_active = "chat_activation_pravi";
+const table_records = "clients_pravi";
+
+type MediaPayload = {
+  kind?: string;
+  type?: string;
+  url?: string;
+  mediaUrl?: string;
+  downloadUrl?: string;
+  download_url?: string;
+  mime?: string;
+  mime_type?: string;
+  name?: string;
+  filename?: string;
+  fileName?: string;
+  size?: number;
+  size_bytes?: number;
+};
+
+interface MessagePayload {
+  type: "human" | "ai" | string;
+  content: string;
+  media?: MediaPayload;
+  mediaUrl?: string;
+  media_url?: string;
+  file_url?: string;
+  attachment_url?: string;
+  additional_kwargs?: any;
+  response_metadata?: any;
+  tool_calls?: any[];
+  invalid_tool_calls?: any[];
+}
 
 interface Message {
-  id: string
-  session_id: string
-  message: {
-    type: "human" | "ai"
-    content: string
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    additional_kwargs?: any
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    response_metadata?: any
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    tool_calls?: any[]
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    invalid_tool_calls?: any[]
-  }
-  time?: string
+  id: string;
+  session_id: string;
+  message: MessagePayload | string;
+  time?: string;
 }
 
 interface ClientInfo {
@@ -48,62 +73,241 @@ interface ClientInfo {
 }
 
 export default function ChatViewer() {
-  const [conversations, setConversations] = useState<{ [key: string]: Message[] }>({})
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
-  const [searchQuery, setSearchQuery] = useState("")
-  const [loading, setLoading] = useState(true)
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [page, setPage] = useState(0)
-  const [hasMore, setHasMore] = useState(true)
-  const [searching, setSearching] = useState(false)
-  const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(null)
-  const [loadingMore, setLoadingMore] = useState(false)
-  const [inputMessage, setInputMessage] = useState("")
-  const [isBotActive, setIsBotActive] = useState(true)
-  const [showReminderModal, setShowReminderModal] = useState(false)
-  const [activationStatusLoading, setActivationStatusLoading] = useState(false)
-  const isMobile = useMediaQuery(useTheme().breakpoints.down('md'));
+  const [conversations, setConversations] = useState<{
+    [key: string]: Message[];
+  }>({});
+
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [searching, setSearching] = useState(false);
+  const [searchTimeout, setSearchTimeout] =
+    useState<ReturnType<typeof setTimeout> | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [inputMessage, setInputMessage] = useState("");
+  const [isBotActive, setIsBotActive] = useState(true);
+  const [showReminderModal, setShowReminderModal] = useState(false);
+  const [activationStatusLoading, setActivationStatusLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showNewMessageModal, setShowNewMessageModal] = useState(false);
   const [nuevoMensaje, setNuevoMensaje] = useState("");
+
   const conversationListRef = useRef<HTMLDivElement>(null);
   const chatMessagesRef = useRef<HTMLDivElement>(null);
-  const [clientsInfo, setClientsInfo] = useState<{ [key: string]: ClientInfo }>({})
-  const { toast } = useToast()
+  const lastMessageRef = useRef<HTMLDivElement>(null);
+  const shouldStickToBottomRef = useRef(true);
+  const previousSessionRef = useRef<string | null>(null);
+  const previousLengthRef = useRef(0);
+  const scrollTimersRef = useRef<number[]>([]);
+  const forceScrollBottomRef = useRef(false);
+  const [clientsInfo, setClientsInfo] = useState<{ [key: string]: ClientInfo }>(
+    {}
+  );
 
-  const [showEditNameModal, setShowEditNameModal] = useState(false)
-  const [editingName, setEditingName] = useState("")
-  const [editingCategoria, setEditingCategoria] = useState("")
-  const [editingTipoCliente, setEditingTipoCliente] = useState("")
+  const { toast } = useToast();
+  const isMobile = useMediaQuery(useTheme().breakpoints.down("md"));
 
-  const [showNewChatModal, setShowNewChatModal] = useState(false)
-  const [newPhoneNumber, setNewPhoneNumber] = useState("")
-  const [newClientName, setNewClientName] = useState("")
-  const [newClientMessage, setNewClientMessage] = useState("")
-  const [pendingAttachment, setPendingAttachment] = useState<File | null>(null)
-  const [isUploadingMedia, setIsUploadingMedia] = useState(false)
+  const [showEditNameModal, setShowEditNameModal] = useState(false);
+  const [editingName, setEditingName] = useState("");
+  const [editingCategoria, setEditingCategoria] = useState("");
+  const [editingTipoCliente, setEditingTipoCliente] = useState("");
 
-  const PAGE_SIZE = 200
+  const [showNewChatModal, setShowNewChatModal] = useState(false);
+  const [newPhoneNumber, setNewPhoneNumber] = useState("");
+  const [newClientName, setNewClientName] = useState("");
+  const [newClientMessage, setNewClientMessage] = useState("");
 
-  // Función principal para cargar conversaciones
+  const [pendingAttachment, setPendingAttachment] = useState<File | null>(null);
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
+
+  const PAGE_SIZE = 200;
+
+  const normalizeMessagePayload = (message: unknown): MessagePayload => {
+    if (typeof message === "string") {
+      try {
+        return JSON.parse(message);
+      } catch {
+        return {
+          type: "text",
+          content: message,
+          tool_calls: [],
+          additional_kwargs: {},
+          response_metadata: {},
+          invalid_tool_calls: [],
+        };
+      }
+    }
+
+    return (
+      (message as MessagePayload) || {
+        type: "text",
+        content: "",
+        tool_calls: [],
+        additional_kwargs: {},
+        response_metadata: {},
+        invalid_tool_calls: [],
+      }
+    );
+  };
+
+  const getMediaKindFromMime = (mime?: string) => {
+    if (!mime) return "document";
+    if (mime.startsWith("image/")) return "image";
+    if (mime.startsWith("video/")) return "video";
+    if (mime.startsWith("audio/")) return "audio";
+    return "document";
+  };
+
+  const getCleanMediaCaption = (content?: string, fileName?: string) => {
+    if (!content || typeof content !== "string") return undefined;
+
+    const cleanContent = content.trim();
+
+    if (!cleanContent) return undefined;
+    if (/^Archivo enviado\s*\(/i.test(cleanContent)) return undefined;
+    if (/^Archivo recibido\s*\(/i.test(cleanContent)) return undefined;
+    if (fileName && cleanContent === fileName) return undefined;
+
+    return cleanContent;
+  };
+
+  const getMessageMedia = (messagePayload: MessagePayload) => {
+    const media =
+      messagePayload?.media ||
+      messagePayload?.additional_kwargs?.media ||
+      messagePayload?.additional_kwargs?.attachment ||
+      messagePayload?.additional_kwargs?.attachments?.[0] ||
+      null;
+
+    const url =
+      media?.url ||
+      media?.mediaUrl ||
+      media?.downloadUrl ||
+      messagePayload?.mediaUrl ||
+      messagePayload?.media_url ||
+      messagePayload?.file_url ||
+      messagePayload?.attachment_url ||
+      null;
+
+    if (!url) return null;
+
+    const mime = media?.mime || media?.mime_type || "";
+    const kind = media?.kind || media?.type || getMediaKindFromMime(mime);
+
+    const fileName =
+      media?.name ||
+      media?.filename ||
+      media?.fileName ||
+      "Archivo recibido";
+
+    return {
+      kind,
+      url,
+      downloadUrl: media?.downloadUrl || media?.download_url || url,
+      mime,
+      name: fileName,
+      filename: fileName,
+      size: media?.size || media?.size_bytes,
+    };
+  };
+
+  const scrollToBottom = (behavior: ScrollBehavior = "auto") => {
+    const el = chatMessagesRef.current;
+    if (!el) return;
+
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+
+      if (lastMessageRef.current) {
+        lastMessageRef.current.scrollIntoView({
+          behavior,
+          block: "end",
+        });
+      }
+    });
+  };
+
+  const scheduleScrollToBottom = () => {
+    scrollTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    scrollTimersRef.current = [];
+
+    const delays = [0, 50, 150, 350, 800, 1400];
+
+    scrollTimersRef.current = delays.map((delay) =>
+      window.setTimeout(() => {
+        scrollToBottom("auto");
+      }, delay)
+    );
+  };
+
+  const handleChatScroll = () => {
+    const el = chatMessagesRef.current;
+    if (!el) return;
+
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+
+    shouldStickToBottomRef.current = distanceFromBottom < 120;
+  };
+
+  const fetchClientInfo = async (phoneNumber: string) => {
+    try {
+      const { data, error } = await supabase
+        .from(table_records)
+        .select("nombre, tipo_cliente, categoria")
+        .eq("telefono", phoneNumber);
+
+      if (error) {
+        console.error("Error fetching client info:", error);
+        return null;
+      }
+
+      if (!data || data.length === 0) return null;
+
+      return data[0];
+    } catch (error) {
+      console.error("Error fetching client info:", error);
+      return null;
+    }
+  };
+
+  const loadClientsInfo = async (sessionIds: string[]) => {
+    try {
+      const clientsData: { [key: string]: ClientInfo } = {};
+
+      await Promise.all(
+        sessionIds.map(async (sessionId) => {
+          const clientInfo = await fetchClientInfo(sessionId);
+          if (clientInfo) {
+            clientsData[sessionId] = clientInfo;
+          }
+        })
+      );
+
+      setClientsInfo((prevClients) => ({
+        ...prevClients,
+        ...clientsData,
+      }));
+    } catch (error) {
+      console.error("Error loading clients info:", error);
+    }
+  };
+
   const fetchConversations = async (reset = false, searchTerm = searchQuery) => {
     try {
       if (reset) {
-        setPage(0)
-        setHasMore(true)
-        if (!searching) setConversations({})
+        setPage(0);
+        setHasMore(true);
+        if (!searching) setConversations({});
       }
 
-      setLoadingMore(true)
+      setLoadingMore(true);
 
-      let query = supabase
-        .from(table_chat)
-        .select("*")
+      let query = supabase.from(table_chat).select("*");
 
-      // Agrupamos primero por session_id para obtener solo IDs de sesión únicos
-      // Si hay término de búsqueda, lo aplicamos
       if (searchTerm) {
-        // Primero buscamos en la tabla de clientes
         const { data: clientMatches, error: clientError } = await supabase
           .from(table_records)
           .select("telefono")
@@ -111,588 +315,164 @@ export default function ChatViewer() {
 
         if (clientError) throw clientError;
 
-        // Obtenemos los números de teléfono que coinciden con la búsqueda por nombre
-        const matchingNumbers = clientMatches?.map(client => client.telefono) || [];
+        const matchingNumbers =
+          clientMatches?.map((client) => client.telefono) || [];
 
-        // Si encontramos coincidencias por nombre
         if (matchingNumbers.length > 0) {
-          query = query.or(`session_id.in.(${matchingNumbers.join(',')}),session_id.ilike.%${searchTerm}%,message->>content.ilike.%${searchTerm}%`);
+          query = query.or(
+            `session_id.in.(${matchingNumbers.join(
+              ","
+            )}),session_id.ilike.%${searchTerm}%,message->>content.ilike.%${searchTerm}%`
+          );
         } else {
-          // Si no hay coincidencias por nombre, buscamos solo en session_id y contenido
-          query = query.or(`session_id.ilike.%${searchTerm}%,message->>content.ilike.%${searchTerm}%`);
+          query = query.or(
+            `session_id.ilike.%${searchTerm}%,message->>content.ilike.%${searchTerm}%`
+          );
         }
       }
 
-      // Ordenamos por tiempo descendente y aplicamos paginación
       const { data, error } = await query
         .order("time", { ascending: false })
-        .range(reset ? 0 : page * PAGE_SIZE, (reset ? 0 : page) * PAGE_SIZE + PAGE_SIZE - 1)
+        .range(
+          reset ? 0 : page * PAGE_SIZE,
+          (reset ? 0 : page) * PAGE_SIZE + PAGE_SIZE - 1
+        );
 
-      if (error) throw error
+      if (error) throw error;
 
-      // Si no hay más datos para cargar
       if (!data || data.length === 0) {
-        setHasMore(false)
-        setLoadingMore(false)
+        setHasMore(false);
+        setLoadingMore(false);
+
         if (reset && !searchTerm) {
-          setConversations({})
+          setConversations({});
         }
-        return
+
+        return;
       }
 
-      // Obtener los session_ids únicos de este lote
-      const sessionIds = [...new Set(data.map(item => item.session_id))]
+      const sessionIds = [
+        ...new Set(data.map((item) => String(item.session_id))),
+      ];
 
-      // Agregar esta línea después:
-      await loadClientsInfo(sessionIds)
+      await loadClientsInfo(sessionIds);
 
-      // Para cada session_id, cargar todos sus mensajes
-      const newConversations: { [key: string]: Message[] } = { ...(!reset ? conversations : {}) }
+      const newConversations: { [key: string]: Message[] } = {
+        ...(!reset ? conversations : {}),
+      };
 
-      await Promise.all(sessionIds.map(async (sessionId) => {
-        // Si ya tenemos esta conversación cargada y no estamos reseteando, no la volvemos a cargar
-        if (!reset && newConversations[sessionId]) return
+      await Promise.all(
+        sessionIds.map(async (sessionId) => {
+          if (!reset && newConversations[sessionId]) return;
 
-        const { data: sessionMessages, error: sessionError } = await supabase
-          .from(table_chat)
-          .select("*")
-          .eq("session_id", sessionId)
-          .order("time", { ascending: true })
+          const { data: sessionMessages, error: sessionError } = await supabase
+            .from(table_chat)
+            .select("*")
+            .eq("session_id", sessionId)
+            .order("time", { ascending: true });
 
-        if (sessionError) throw sessionError
+          if (sessionError) throw sessionError;
 
-        if (sessionMessages && sessionMessages.length > 0) {
-          newConversations[sessionId] = sessionMessages
-        }
-      }))
+          if (sessionMessages && sessionMessages.length > 0) {
+            newConversations[sessionId] = sessionMessages;
+          }
+        })
+      );
 
-      setConversations(newConversations)
+      setConversations(newConversations);
 
-      // Si no hay sesión activa y hay conversaciones, seleccionamos la más reciente
       if (!activeSessionId && Object.keys(newConversations).length > 0 && reset) {
-        const mostRecentSession = Object.entries(newConversations)
-          .sort(([, messagesA], [, messagesB]) => {
-            const lastTimeA = messagesA[messagesA.length - 1]?.time || ""
-            const lastTimeB = messagesB[messagesB.length - 1]?.time || ""
-            return new Date(lastTimeB).getTime() - new Date(lastTimeA).getTime()
-          })[0][0]
-        setActiveSessionId(mostRecentSession)
+        const mostRecentSession = Object.entries(newConversations).sort(
+          ([, messagesA], [, messagesB]) => {
+            const lastTimeA = messagesA[messagesA.length - 1]?.time || "";
+            const lastTimeB = messagesB[messagesB.length - 1]?.time || "";
+
+            return new Date(lastTimeB).getTime() - new Date(lastTimeA).getTime();
+          }
+        )[0][0];
+
+        setActiveSessionId(mostRecentSession);
       }
 
       if (!reset) {
-        setPage(prevPage => prevPage + 1)
+        setPage((prevPage) => prevPage + 1);
       }
 
-      setLoading(false)
-      setLoadingMore(false)
+      setLoading(false);
+      setLoadingMore(false);
     } catch (error) {
-      console.error("Error fetching conversations:", error)
+      console.error("Error fetching conversations:", error);
       toast({
         title: "Error",
         description: "Failed to load conversations",
         variant: "destructive",
-      })
-      setLoading(false)
-      setLoadingMore(false)
-    }
-  }
-
-  const fetchClientInfo = async (phoneNumber: string) => {
-    try {
-      const { data, error } = await supabase
-        .from(table_records)
-        .select("nombre, tipo_cliente, categoria")
-        .eq("telefono", phoneNumber)
-
-      if (error) {
-        console.error("Error fetching client info:", error)
-        return null
-      }
-
-      if (!data || data.length === 0) {
-        return null
-      }
-      return data[0]
-    } catch (error) {
-      console.error("Error fetching client info:", error)
-      return null
-    }
-  }
-
-  const loadClientsInfo = async (sessionIds: string[]) => {
-    try {
-      const clientsData: { [key: string]: ClientInfo } = {}
-
-      await Promise.all(
-        sessionIds.map(async (sessionId) => {
-          const clientInfo = await fetchClientInfo(sessionId)
-          if (clientInfo) {
-            clientsData[sessionId] = clientInfo
-          }
-        })
-      )
-
-      setClientsInfo(prevClients => ({
-        ...prevClients,
-        ...clientsData
-      }))
-    } catch (error) {
-      console.error("Error loading clients info:", error)
-    }
-  }
-
-  const normalizeMessagePayload = (message: unknown) => {
-    if (typeof message === "string") {
-      try {
-        return JSON.parse(message)
-      } catch {
-        return { type: "text", content: message }
-      }
-    }
-
-    return message || { type: "text", content: "" }
-  }
-
-  const getMessageMediaUrl = (message: any) => {
-    return message?.media?.url || message?.mediaUrl || message?.media_url || message?.file_url || message?.attachment_url || null
-  }
-
-  const handleAttachFile = (file: File | null) => {
-    if (!file) {
-      setPendingAttachment(null)
-      return
-    }
-
-    const validation = validateMediaFile(file)
-    if (!validation.valid) {
-      toast({
-        title: "Archivo no válido",
-        description: validation.error || "No se pudo validar el archivo",
-        variant: "destructive",
-      })
-      return
-    }
-
-    setPendingAttachment(file)
-  }
-
-const handleSendMedia = async (attachmentToSend: File) => {
-  if (!activeSessionId || isUploadingMedia || isBotActive) return;
-
-  try {
-    setIsUploadingMedia(true);
-
-    if (MEDIA_TEST_MODE) {
-      const timestamp = new Date().toISOString();
-      const localUrl = createLocalPreviewUrl(attachmentToSend);
-      const validation = validateMediaFile(attachmentToSend);
-
-      const messagePayload = {
-        type: validation.category,
-        content: `Archivo enviado (${attachmentToSend.name})`,
-        mediaUrl: localUrl,
-        tool_calls: [],
-        additional_kwargs: {},
-        response_metadata: {},
-        invalid_tool_calls: [],
-      };
-
-      const simulatedMessage: Message = {
-        id: `${activeSessionId}-${timestamp}`,
-        session_id: activeSessionId,
-        message: {
-          ...messagePayload,
-          type: "ai",
-        } as Message["message"],
-        time: timestamp,
-      };
-
-      setConversations((prev) => ({
-        ...prev,
-        [activeSessionId]: [...(prev[activeSessionId] || []), simulatedMessage],
-      }));
-
-      toast({
-        title: "Modo prueba",
-        description: `Se simuló el adjunto ${attachmentToSend.name}`,
       });
 
-      return;
-    }
-
-    const mediaType = getMediaTypeForFile(attachmentToSend);
-
-    await sendMediaToSession(activeSessionId, mediaType, attachmentToSend);
-
-    toast({
-      title: "Archivo enviado",
-      description: `Se envió ${attachmentToSend.name}`,
-    });
-  } catch (error) {
-    console.error("Error sending media:", error);
-
-    toast({
-      title: "Error",
-      description: "No se pudo enviar el archivo",
-      variant: "destructive",
-    });
-  } finally {
-    setIsUploadingMedia(false);
-  }
-};
-
-  const createNewChat = async () => {
-    if (!newPhoneNumber.trim() || !newClientName.trim() || !newClientMessage.trim()) {
-      toast({
-        title: "Error",
-        description: "Todos los campos son obligatorios",
-        variant: "destructive",
-      })
-      return
-    }
-
-    try {
-      // Formato internacional para WhatsApp
-      const formattedPhone = newPhoneNumber.startsWith('+')
-        ? newPhoneNumber.replace(/\s+/g, '')
-        : `+${newPhoneNumber.replace(/\s+/g, '')}`;
-
-      // 1. Guardar la información del cliente en la tabla de clientes
-      const { error: clientError } = await supabase
-        .from(table_records)
-        .upsert({
-          telefono: formattedPhone,
-          nombre: newClientName.trim()
-        })
-
-      if (clientError) throw clientError
-
-      // 2. Crear un nuevo mensaje en la tabla de chat
-      const timestamp = new Date().toISOString()
-
-      const newMessage = {
-        session_id: formattedPhone,
-        message: {
-          type: "ai",
-          content: newClientMessage.trim(),
-          tool_calls: [],
-          additional_kwargs: {},
-          response_metadata: {},
-          invalid_tool_calls: []
-        },
-        time: timestamp
-      }
-
-      const { error: chatError } = await supabase
-        .from(table_chat)
-        .insert(newMessage)
-
-      if (chatError) throw chatError
-
-      // 3. Enviar el mensaje por WhatsApp
-      await sendWhatsAppMessage(formattedPhone, newClientMessage.trim())
-
-      // 4. Actualizar la UI y limpiar el formulario
-      setShowNewChatModal(false)
-      setNewPhoneNumber("")
-      setNewClientName("")
-      setNewClientMessage("")
-
-      // 5. Cargar la conversación recién creada
-      await fetchConversations(true)
-      setActiveSessionId(formattedPhone)
-
-      toast({
-        title: "Éxito",
-        description: "Mensaje enviado correctamente",
-      })
-    } catch (error) {
-      console.error("Error creating new chat:", error)
-      toast({
-        title: "Error",
-        description: "No se pudo crear el nuevo chat",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const updateClientName = async () => {
-    if (!activeSessionId || !editingName.trim()) return;
-
-    try {
-      const updates = {
-        numero: activeSessionId,
-        nombre: editingName.trim(),
-        tipo_cliente: editingTipoCliente || undefined,
-        categoria: editingCategoria || undefined
-      };
-
-      const { error } = await supabase
-        .from(table_records)
-        .upsert(updates)
-        .eq("numero", activeSessionId);
-
-      if (error) throw error;
-
-      // Actualizar el estado local
-      setClientsInfo(prev => ({
-        ...prev,
-        [activeSessionId]: {
-          nombre: editingName.trim(),
-          tipo_cliente: editingTipoCliente || undefined,
-          categoria: editingCategoria || undefined
-        }
-      }));
-
-      setShowEditNameModal(false);
-
-      toast({
-        title: "Nombre actualizado",
-        description: "La información del cliente ha sido actualizada",
-        variant: "default",
-      });
-    } catch (error) {
-      console.error("Error updating client name:", error);
-      toast({
-        title: "Error",
-        description: "No se pudo actualizar la información del cliente",
-        variant: "destructive",
-      });
+      setLoading(false);
+      setLoadingMore(false);
     }
   };
 
-  // Preparar datos al abrir el modal
-  useEffect(() => {
-    if (showEditNameModal && activeSessionId) {
-      setEditingName(clientsInfo[activeSessionId]?.nombre || "");
-      setEditingTipoCliente(clientsInfo[activeSessionId]?.tipo_cliente || "");
-      setEditingCategoria(clientsInfo[activeSessionId]?.categoria || "");
-    }
-  }, [showEditNameModal, activeSessionId, clientsInfo]);
 
-
-  // Cargar conversaciones iniciales
-  useEffect(() => {
-    fetchConversations(true)
-
-    // Suscripción a cambios en la tabla de clientes
-    const clientsSubscription = supabase
-      .channel(`${table_records}_changes`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*", // Escuchar todos los cambios (INSERT, UPDATE, DELETE)
-          schema: "public",
-          table: table_records,
-        },
-        (payload) => {
-          const clientData = payload.new as { numero: string, nombre: string, tipo_cliente?: string, Categoria?: string };
-
-          // Actualizar la información del cliente en el estado
-          if (clientData && clientData.numero) {
-            setClientsInfo(prev => ({
-              ...prev,
-              [clientData.numero]: clientData
-            }));
-          }
-        },
-      )
-      .subscribe()
-    // Set up real-time subscription
-    const subscription = supabase
-      .channel(`${table_chat}_changes`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",  // Solo escuchamos inserciones
-          schema: "public",
-          table: table_chat,
-        },
-        (payload) => {
-          const newMessage = payload.new as Message;
-
-          // Si es un mensaje para la conversación activa, lo añadimos al estado
-          if (activeSessionId && newMessage.session_id === activeSessionId) {
-            setConversations(prevConversations => ({
-              ...prevConversations,
-              [activeSessionId]: [
-                ...(prevConversations[activeSessionId] || []),
-                newMessage
-              ]
-            }));
-          }
-          // Si es un mensaje para otra conversación, actualizamos solo esa conversación
-          else if (newMessage.session_id) {
-            // Si ya tenemos esta conversación cargada, añadimos el mensaje
-            if (conversations[newMessage.session_id]) {
-              setConversations(prevConversations => ({
-                ...prevConversations,
-                [newMessage.session_id]: [
-                  ...(prevConversations[newMessage.session_id] || []),
-                  newMessage
-                ]
-              }));
-            }
-            // Si es una conversación nueva, la cargamos
-            else {
-              fetchActiveConversation(newMessage.session_id);
-            }
-          }
-        },
-      )
-      .subscribe()
-
-    return () => {
-      subscription.unsubscribe()
-      clientsSubscription.unsubscribe()
-    }
-  }, [])
-
-  // Cargar el estado de activación cuando cambia la sesión activa
-  useEffect(() => {
-    if (activeSessionId) {
-      fetchActivationStatus(activeSessionId)
-    }
-  }, [activeSessionId])
-
-
-
-  // Función para buscar en la base de datos
-  useEffect(() => {
-    if (searchTimeout) {
-      clearTimeout(searchTimeout)
-    }
-
-    // Configuramos un debounce para no hacer demasiadas peticiones
-    const newTimeout = setTimeout(() => {
-      if (searchQuery) {
-        setSearching(true)
-        fetchConversations(true, searchQuery)
-      } else if (searching) {
-        setSearching(false)
-        fetchConversations(true, "")
-      }
-    }, 500)
-
-    setSearchTimeout(newTimeout)
-
-    return () => {
-      if (searchTimeout) {
-        clearTimeout(searchTimeout)
-      }
-    }
-  }, [searchQuery])
-
-  // Detector de scroll para cargar más conversaciones
-  useEffect(() => {
-    const handleScroll = () => {
-      if (!conversationListRef.current || loadingMore || !hasMore) return
-
-      const { scrollTop, scrollHeight, clientHeight } = conversationListRef.current
-      // Si hemos llegado al 80% del scroll, cargamos más
-      if (scrollTop + clientHeight >= scrollHeight * 0.8) {
-        fetchConversations(false)
-      }
-    }
-
-    const container = conversationListRef.current
-    if (container) {
-      container.addEventListener("scroll", handleScroll)
-      return () => container.removeEventListener("scroll", handleScroll)
-    }
-  }, [conversationListRef, loadingMore, hasMore])
-
-  // Cargar una conversación específica
-  const fetchActiveConversation = async (sessionId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from(table_chat)
-        .select("*")
-        .eq("session_id", sessionId)
-        .order("time", { ascending: true })
-
-      if (error) throw error
-
-      setConversations(prev => ({
-        ...prev,
-        [sessionId]: data || []
-      }))
-
-    } catch (error) {
-      console.error("Error fetching active conversation:", error)
-      toast({
-        title: "Error",
-        description: "Failed to load conversation",
-        variant: "destructive",
-      })
-    }
-  }
-
-  // Cargar el estado de activación del chatbot
   const fetchActivationStatus = async (sessionId: string) => {
     try {
-      setActivationStatusLoading(true)
+      setActivationStatusLoading(true);
 
       const { data, error } = await supabase
         .from(table_active)
         .select("*")
         .eq("session_id", sessionId)
-        .single()
+        .single();
 
       if (error) {
-        if (error.code === "PGRST116") { // No rows returned
-          // Si no existe un registro, creamos uno con estado activo por defecto
-          await supabase
-            .from(table_active)
-            .insert({ session_id: sessionId, is_active: true })
+        if (error.code === "PGRST116") {
+          await supabase.from(table_active).insert({
+            session_id: sessionId,
+            is_active: true,
+          });
 
-          setIsBotActive(true)
+          setIsBotActive(true);
         } else {
-          throw error
+          throw error;
         }
       } else if (data) {
-        setIsBotActive(data.is_active)
+        setIsBotActive(data.is_active);
       }
 
-      setActivationStatusLoading(false)
+      setActivationStatusLoading(false);
     } catch (error) {
-      console.error("Error fetching activation status:", error)
+      console.error("Error fetching activation status:", error);
       toast({
         title: "Error",
         description: "Failed to load chatbot status",
         variant: "destructive",
-      })
-      setActivationStatusLoading(false)
-      // Por defecto, asumimos que está activo
-      setIsBotActive(true)
-    }
-  }
+      });
 
-  // Función para cambiar el estado de activación del chatbot
+      setActivationStatusLoading(false);
+      setIsBotActive(true);
+    }
+  };
+
   const toggleChatbotStatus = async () => {
-    if (!activeSessionId) return
+    if (!activeSessionId) return;
 
     try {
-      setActivationStatusLoading(true)
+      setActivationStatusLoading(true);
 
-      // Si estamos desactivando el chatbot, mostramos el modal de recordatorio
       if (isBotActive) {
-        setShowReminderModal(true)
+        setShowReminderModal(true);
       }
 
-      const newStatus = !isBotActive
+      const newStatus = !isBotActive;
 
-      // Actualizar en la base de datos
-      const { error } = await supabase
-        .from(table_active)
-        .upsert({
-          session_id: activeSessionId,
-          is_active: newStatus
-        })
+      const { error } = await supabase.from(table_active).upsert({
+        session_id: activeSessionId,
+        is_active: newStatus,
+      });
 
-      if (error) throw error
+      if (error) throw error;
 
-      setIsBotActive(newStatus)
+      setIsBotActive(newStatus);
 
       toast({
         title: newStatus ? "Chatbot activado" : "Chatbot desactivado",
@@ -700,21 +480,21 @@ const handleSendMedia = async (attachmentToSend: File) => {
           ? "El chatbot ahora responderá automáticamente"
           : "Ahora puedes responder manualmente a los mensajes",
         variant: newStatus ? "default" : "destructive",
-      })
+      });
 
-      setActivationStatusLoading(false)
+      setActivationStatusLoading(false);
     } catch (error) {
-      console.error("Error toggling chatbot status:", error)
+      console.error("Error toggling chatbot status:", error);
       toast({
         title: "Error",
         description: "Failed to update chatbot status",
         variant: "destructive",
-      })
-      setActivationStatusLoading(false)
-    }
-  }
+      });
 
-  // Función para enviar mensaje a WhatsApp
+      setActivationStatusLoading(false);
+    }
+  };
+
   const sendWhatsAppMessage = async (phoneNumber: string, message: string) => {
     try {
       console.log("Sending to:", phoneNumber);
@@ -729,38 +509,147 @@ const handleSendMedia = async (attachmentToSend: File) => {
           to: phoneNumber,
           type: "text",
           text: {
-            body: message
-          }
+            body: message,
+          },
         },
         {
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${WHATSAPP_API_TOKEN}`
-          }
+            Authorization: `Bearer ${WHATSAPP_API_TOKEN}`,
+          },
         }
       );
 
       console.log("WhatsApp response:", response.data);
+
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
         console.error("WhatsApp API Error:", error.response?.data);
-        throw new Error(`WhatsApp API Error: ${error.response?.data?.error?.message || error.message}`);
+
+        throw new Error(
+          `WhatsApp API Error: ${error.response?.data?.error?.message || error.message
+          }`
+        );
       }
+
       throw error;
     }
   };
 
+  const handleAttachFile = (file: File | null) => {
+    if (!file) {
+      setPendingAttachment(null);
+      return;
+    }
 
-  // Función para enviar mensaje manual
-  // Modificar la función sendMessage
-  const sendMessage = async () => {
-    if (!activeSessionId || !inputMessage.trim() || isBotActive) return
+    const validation = validateMediaFile(file);
+
+    if (!validation.valid) {
+      toast({
+        title: "Archivo no válido",
+        description: validation.error || "No se pudo validar el archivo",
+        variant: "destructive",
+      });
+
+      return;
+    }
+
+    setPendingAttachment(file);
+  };
+
+  const handleSendMedia = async () => {
+    if (!activeSessionId || !pendingAttachment || isUploadingMedia || isBotActive) {
+      return;
+    }
 
     try {
-      const timestamp = new Date().toISOString()
+      setIsUploadingMedia(true);
 
-      // Crear el objeto de mensaje
+      if (MEDIA_TEST_MODE) {
+        const timestamp = new Date().toISOString();
+        const localUrl = createLocalPreviewUrl(pendingAttachment);
+
+        if (!localUrl) {
+          throw new Error("No se pudo generar la vista previa local del archivo");
+        }
+
+        const mediaType = getMediaTypeForFile(pendingAttachment);
+
+        const messagePayload: MessagePayload = {
+          type: "ai",
+          content: `Archivo enviado (${pendingAttachment.name})`,
+          media: {
+            kind: mediaType,
+            url: localUrl,
+            downloadUrl: localUrl,
+            mime: pendingAttachment.type,
+            name: pendingAttachment.name,
+            filename: pendingAttachment.name,
+            size: pendingAttachment.size,
+          },
+          mediaUrl: localUrl,
+          tool_calls: [],
+          additional_kwargs: {},
+          response_metadata: {},
+          invalid_tool_calls: [],
+        };
+
+        const simulatedMessage: Message = {
+          id: `${activeSessionId}-${timestamp}`,
+          session_id: activeSessionId,
+          message: messagePayload,
+          time: timestamp,
+        };
+
+        setConversations((prev) => ({
+          ...prev,
+          [activeSessionId]: [
+            ...(prev[activeSessionId] || []),
+            simulatedMessage,
+          ],
+        }));
+
+        setPendingAttachment(null);
+        setInputMessage("");
+
+        toast({
+          title: "Modo prueba",
+          description: `Se simuló el adjunto ${pendingAttachment.name}`,
+        });
+
+        return;
+      }
+
+      const mediaType = getMediaTypeForFile(pendingAttachment);
+
+      await sendMediaToSession(activeSessionId, mediaType, pendingAttachment);
+
+      setPendingAttachment(null);
+      setInputMessage("");
+
+      toast({
+        title: "Archivo enviado",
+        description: `Se envió ${pendingAttachment.name}`,
+      });
+    } catch (error) {
+      console.error("Error sending media:", error);
+      toast({
+        title: "Error",
+        description: "No se pudo enviar el archivo",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploadingMedia(false);
+    }
+  };
+
+  const sendMessage = async () => {
+    if (!activeSessionId || !inputMessage.trim() || isBotActive) return;
+
+    try {
+      const timestamp = new Date().toISOString();
+
       const newMessage = {
         session_id: activeSessionId,
         message: {
@@ -769,49 +658,47 @@ const handleSendMedia = async (attachmentToSend: File) => {
           tool_calls: [],
           additional_kwargs: {},
           response_metadata: {},
-          invalid_tool_calls: []
+          invalid_tool_calls: [],
         },
-        time: timestamp
+        time: timestamp,
+      };
+
+      const { error } = await supabase.from(table_chat).insert(newMessage);
+
+      if (error) throw error;
+
+      try {
+        await sendWhatsAppMessage(activeSessionId, inputMessage.trim());
+      } catch (whatsAppError) {
+        toast({
+          title: "Error",
+          description: "Failed to send message through WhatsApp API",
+          variant: "destructive",
+        });
       }
 
-      // Insertar en la base de datos
-      const { error } = await supabase
-        .from(table_chat)
-        .insert(newMessage)
-
-      if (error) throw error
-
-      // Extraer el número de teléfono del session_id (asumiendo que session_id es el número de WhatsApp)
-      const phoneNumber = activeSessionId
-
-      // Enviar el mensaje a WhatsApp
-      if (phoneNumber) {
-        try {
-          await sendWhatsAppMessage(phoneNumber, inputMessage.trim())
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        } catch (whatsAppError) {
-          toast({
-            title: "Error",
-            description: "Failed to send message through WhatsApp API",
-            variant: "destructive",
-          })
-        }
-      }
-
-      // Limpiar el input
-      setInputMessage("")
-
+      setInputMessage("");
     } catch (error) {
-      console.error("Error sending message:", error)
+      console.error("Error sending message:", error);
       toast({
         title: "Error",
         description: "Failed to send message",
         variant: "destructive",
-      })
+      });
     }
-  }
+  };
 
-  // Función para manejar envío de mensajes largos
+  const handleComposerSubmit = async () => {
+    if (pendingAttachment) {
+      await handleSendMedia();
+      return;
+    }
+
+    if (!inputMessage.trim()) return;
+
+    await sendMessage();
+  };
+
   const handleSendMessage = async () => {
     if (!activeSessionId || !nuevoMensaje.trim()) return;
 
@@ -819,6 +706,7 @@ const handleSendMedia = async (attachmentToSend: File) => {
       setActivationStatusLoading(true);
 
       const timestamp = new Date().toISOString();
+
       const newMessage = {
         session_id: activeSessionId,
         message: {
@@ -827,22 +715,17 @@ const handleSendMedia = async (attachmentToSend: File) => {
           tool_calls: [],
           additional_kwargs: {},
           response_metadata: {},
-          invalid_tool_calls: []
+          invalid_tool_calls: [],
         },
-        time: timestamp
+        time: timestamp,
       };
 
-      // Insertar en base de datos
-      const { error } = await supabase
-        .from(table_chat)
-        .insert(newMessage);
+      const { error } = await supabase.from(table_chat).insert(newMessage);
 
       if (error) throw error;
 
-      // Enviar por WhatsApp
       await sendWhatsAppMessage(activeSessionId, nuevoMensaje.trim());
 
-      // Limpiar y cerrar modal
       setNuevoMensaje("");
       setShowNewMessageModal(false);
       setActivationStatusLoading(false);
@@ -853,7 +736,9 @@ const handleSendMedia = async (attachmentToSend: File) => {
       });
     } catch (error) {
       console.error("Error sending message:", error);
+
       setActivationStatusLoading(false);
+
       toast({
         title: "Error",
         description: "No se pudo enviar el mensaje",
@@ -862,88 +747,368 @@ const handleSendMedia = async (attachmentToSend: File) => {
     }
   };
 
- const handleComposerSubmit = async () => {
-  if (pendingAttachment) {
-    const attachmentToSend = pendingAttachment;
+  const createNewChat = async () => {
+    if (
+      !newPhoneNumber.trim() ||
+      !newClientName.trim() ||
+      !newClientMessage.trim()
+    ) {
+      toast({
+        title: "Error",
+        description: "Todos los campos son obligatorios",
+        variant: "destructive",
+      });
 
-    // Limpiar visualmente inmediatamente
-    setPendingAttachment(null);
-    setInputMessage("");
-
-    await handleSendMedia(attachmentToSend);
-    return;
-  }
-
-  if (!inputMessage.trim()) return;
-  await sendMessage();
-};
-
-  // Filter conversations based on loaded data and sort by last message time
-  const filteredConversations = Object.entries(conversations)
-    .sort(([, messagesA], [, messagesB]) => {
-      const lastTimeA = messagesA[messagesA.length - 1]?.time || ""
-      const lastTimeB = messagesB[messagesB.length - 1]?.time || ""
-      return new Date(lastTimeB).getTime() - new Date(lastTimeA).getTime()
-    })
-
-  // Get the active conversation
-  const activeConversation = activeSessionId ? conversations[activeSessionId] : null
-
-  // Format date for conversation list: DD/MM/YYYY HH:MM
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
-    return `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear()} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`
-  }
-
-  // Format time for message bubbles: HH:MM
-  const formatTime = (dateString: string) => {
-    const date = new Date(dateString)
-    return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`
-  }
-  // Scroll to bottom when new messages arrive
-  useEffect(() => {
-    if (chatMessagesRef.current && activeConversation?.length) {
-      chatMessagesRef.current.scrollTop = chatMessagesRef.current.scrollHeight
+      return;
     }
-  }, [activeConversation])
+
+    try {
+      const formattedPhone = newPhoneNumber.startsWith("+")
+        ? newPhoneNumber.replace(/\s+/g, "")
+        : `+${newPhoneNumber.replace(/\s+/g, "")}`;
+
+      const { error: clientError } = await supabase.from(table_records).upsert({
+        telefono: formattedPhone,
+        nombre: newClientName.trim(),
+      });
+
+      if (clientError) throw clientError;
+
+      const timestamp = new Date().toISOString();
+
+      const newMessage = {
+        session_id: formattedPhone,
+        message: {
+          type: "ai",
+          content: newClientMessage.trim(),
+          tool_calls: [],
+          additional_kwargs: {},
+          response_metadata: {},
+          invalid_tool_calls: [],
+        },
+        time: timestamp,
+      };
+
+      const { error: chatError } = await supabase
+        .from(table_chat)
+        .insert(newMessage);
+
+      if (chatError) throw chatError;
+
+      await sendWhatsAppMessage(formattedPhone, newClientMessage.trim());
+
+      setShowNewChatModal(false);
+      setNewPhoneNumber("");
+      setNewClientName("");
+      setNewClientMessage("");
+
+      await fetchConversations(true);
+
+      setActiveSessionId(formattedPhone);
+
+      toast({
+        title: "Éxito",
+        description: "Mensaje enviado correctamente",
+      });
+    } catch (error) {
+      console.error("Error creating new chat:", error);
+
+      toast({
+        title: "Error",
+        description: "No se pudo crear el nuevo chat",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const updateClientName = async () => {
+    if (!activeSessionId || !editingName.trim()) return;
+
+    try {
+      const updates = {
+        telefono: activeSessionId,
+        nombre: editingName.trim(),
+        tipo_cliente: editingTipoCliente || undefined,
+        categoria: editingCategoria || undefined,
+      };
+
+      const { error } = await supabase.from(table_records).upsert(updates);
+
+      if (error) throw error;
+
+      setClientsInfo((prev) => ({
+        ...prev,
+        [activeSessionId]: {
+          nombre: editingName.trim(),
+          tipo_cliente: editingTipoCliente || undefined,
+          categoria: editingCategoria || undefined,
+        },
+      }));
+
+      setShowEditNameModal(false);
+
+      toast({
+        title: "Nombre actualizado",
+        description: "La información del cliente ha sido actualizada",
+        variant: "default",
+      });
+    } catch (error) {
+      console.error("Error updating client name:", error);
+
+      toast({
+        title: "Error",
+        description: "No se pudo actualizar la información del cliente",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const filteredConversations = Object.entries(conversations).sort(
+    ([, messagesA], [, messagesB]) => {
+      const lastTimeA = messagesA[messagesA.length - 1]?.time || "";
+      const lastTimeB = messagesB[messagesB.length - 1]?.time || "";
+
+      return new Date(lastTimeB).getTime() - new Date(lastTimeA).getTime();
+    }
+  );
+
+  const activeConversation = activeSessionId
+    ? conversations[activeSessionId]
+    : null;
+
+  const formatDate = (dateString: string) => {
+    if (!dateString) return "";
+
+    const date = new Date(dateString);
+
+    return `${date.getDate().toString().padStart(2, "0")}/${(
+      date.getMonth() + 1
+    )
+      .toString()
+      .padStart(2, "0")}/${date.getFullYear()} ${date
+        .getHours()
+        .toString()
+        .padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}`;
+  };
+
+  const formatTime = (dateString: string) => {
+    if (!dateString) return "";
+
+    const date = new Date(dateString);
+
+    return `${date.getHours().toString().padStart(2, "0")}:${date
+      .getMinutes()
+      .toString()
+      .padStart(2, "0")}`;
+  };
+
+  useEffect(() => {
+    if (showEditNameModal && activeSessionId) {
+      setEditingName(clientsInfo[activeSessionId]?.nombre || "");
+      setEditingTipoCliente(clientsInfo[activeSessionId]?.tipo_cliente || "");
+      setEditingCategoria(clientsInfo[activeSessionId]?.categoria || "");
+    }
+  }, [showEditNameModal, activeSessionId, clientsInfo]);
+
+  useEffect(() => {
+    fetchConversations(true);
+
+    const clientsSubscription = supabase
+      .channel(`${table_records}_changes`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: table_records,
+        },
+        (payload) => {
+          const clientData = payload.new as {
+            numero?: string;
+            telefono?: string;
+            nombre: string;
+            tipo_cliente?: string;
+            categoria?: string;
+            Categoria?: string;
+          };
+
+          const clientKey = clientData?.telefono || clientData?.numero;
+
+          if (clientData && clientKey) {
+            setClientsInfo((prev) => ({
+              ...prev,
+              [clientKey]: {
+                nombre: clientData.nombre,
+                tipo_cliente: clientData.tipo_cliente,
+                categoria: clientData.categoria || clientData.Categoria,
+              },
+            }));
+          }
+        }
+      )
+      .subscribe();
+
+    const subscription = supabase
+      .channel(`${table_chat}_changes`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: table_chat,
+        },
+        (payload) => {
+          const newMessage = payload.new as Message;
+
+          setConversations((prevConversations) => {
+            const existingMessages =
+              prevConversations[newMessage.session_id] || [];
+
+            return {
+              ...prevConversations,
+              [newMessage.session_id]: [...existingMessages, newMessage],
+            };
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+      clientsSubscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (activeSessionId) {
+      fetchActivationStatus(activeSessionId);
+    }
+  }, [activeSessionId]);
+
+  useEffect(() => {
+    if (searchTimeout) {
+      clearTimeout(searchTimeout);
+    }
+
+    const newTimeout = setTimeout(() => {
+      if (searchQuery) {
+        setSearching(true);
+        fetchConversations(true, searchQuery);
+      } else if (searching) {
+        setSearching(false);
+        fetchConversations(true, "");
+      }
+    }, 500);
+
+    setSearchTimeout(newTimeout);
+
+    return () => {
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+      }
+    };
+  }, [searchQuery]);
+
+  useEffect(() => {
+    const handleConversationListScroll = () => {
+      if (!conversationListRef.current || loadingMore || !hasMore) return;
+
+      const { scrollTop, scrollHeight, clientHeight } =
+        conversationListRef.current;
+
+      if (scrollTop + clientHeight >= scrollHeight * 0.8) {
+        fetchConversations(false);
+      }
+    };
+
+    const container = conversationListRef.current;
+
+    if (container) {
+      container.addEventListener("scroll", handleConversationListScroll);
+
+      return () =>
+        container.removeEventListener("scroll", handleConversationListScroll);
+    }
+  }, [conversationListRef, loadingMore, hasMore]);
+
+  useLayoutEffect(() => {
+    if (!activeSessionId) return;
+    if (loading || activationStatusLoading) return;
+    if (!activeConversation?.length) return;
+
+    const currentLength = activeConversation.length;
+    const sessionChanged = previousSessionRef.current !== activeSessionId;
+    const messageCountChanged = previousLengthRef.current !== currentLength;
+
+    if (sessionChanged || forceScrollBottomRef.current) {
+      forceScrollBottomRef.current = false;
+      shouldStickToBottomRef.current = true;
+
+      scheduleScrollToBottom();
+
+      previousSessionRef.current = activeSessionId;
+      previousLengthRef.current = currentLength;
+
+      return;
+    }
+
+    if (messageCountChanged && shouldStickToBottomRef.current) {
+      scrollToBottom("smooth");
+    }
+
+    previousSessionRef.current = activeSessionId;
+    previousLengthRef.current = currentLength;
+  }, [
+    activeSessionId,
+    activeConversation?.length,
+    loading,
+    activationStatusLoading,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      scrollTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    };
+  }, []);
 
   return (
-    <div className="flex h-[calc(100vh-140px)] overflow-hidden rounded-2xl relative">
-      {/* Alert de Error Global */}
-      {error && (
-        <div className="absolute inset-x-0 top-0 z-[1000]">
-          <div className="mx-3 mt-3 rounded-lg bg-red-600/90 text-white shadow p-3 flex items-start justify-between">
-            <p className="text-sm leading-5">{error}</p>
-            <button
-              onClick={() => setError(null)}
-              className="ml-4 inline-flex h-6 w-6 items-center justify-center rounded hover:bg-white/10 focus:outline-none"
-              aria-label="Cerrar"
-            >
-              ×
-            </button>
-          </div>
-        </div>
-      )}
+    <div className="flex h-[calc(100vh-140px)] min-h-0 overflow-hidden rounded-2xl relative">      {error && (
+      <div className="absolute inset-x-0 top-0 z-[1000]">
+        <div className="mx-3 mt-3 rounded-lg bg-red-600/90 text-white shadow p-3 flex items-start justify-between">
+          <p className="text-sm leading-5">{error}</p>
 
-      {/* Sidebar - Lista de Conversaciones */}
+          <button
+            onClick={() => setError(null)}
+            className="ml-4 inline-flex h-6 w-6 items-center justify-center rounded hover:bg-white/10 focus:outline-none"
+            aria-label="Cerrar"
+          >
+            ×
+          </button>
+        </div>
+      </div>
+    )}
+
       {(!isMobile || mobileMenuOpen) && (
         <div
           ref={conversationListRef}
-          className={`${isMobile ? 'fixed inset-0 z-40 w-full' : 'w-[30%]'} bg-[var(--bg-color)] p-2 overflow-y-auto transition-all`}
+          className={`${isMobile ? "fixed inset-0 z-40 w-full" : "w-[30%]"
+            } bg-[var(--bg-color)] p-2 overflow-y-auto transition-all`}
         >
-          {/* Si mobile: Botón cierre */}
           {isMobile && (
             <button
               onClick={() => setMobileMenuOpen(false)}
               className="absolute top-2 right-2 rounded-full p-2 text-xl text-slate-400 hover:text-white bg-black/10"
               aria-label="Cerrar menú"
-            >×</button>
+            >
+              ×
+            </button>
           )}
-          {/* Header del Sidebar */}
+
           <div className="mb-2 flex items-center justify-between">
             <h2 className="text-[var(--text-color)] text-lg font-semibold">
               Conversaciones
             </h2>
+
             <input
               type="text"
               placeholder="Buscar..."
@@ -953,16 +1118,18 @@ const handleSendMedia = async (attachmentToSend: File) => {
             />
           </div>
 
-          {/* Lista de Conversaciones */}
           {loading ? (
             <div className="flex justify-center mt-4">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-white/40 border-t-white" />
             </div>
           ) : (
             <>
-              {filteredConversations.map(([sessionId, msgs]: any) => {
-                const lastTime = msgs[msgs.length - 1]?.time || '';
-                const lastMessage = msgs[msgs.length - 1]?.message?.content || '';
+              {filteredConversations.map(([sessionId, msgs]) => {
+                const lastTime = msgs[msgs.length - 1]?.time || "";
+                const lastPayload = normalizeMessagePayload(
+                  msgs[msgs.length - 1]?.message
+                );
+                const lastMessage = lastPayload?.content || "";
                 const isActive = sessionId === activeSessionId;
                 const client = clientsInfo[sessionId];
 
@@ -970,29 +1137,42 @@ const handleSendMedia = async (attachmentToSend: File) => {
                   <div
                     key={sessionId}
                     onClick={() => {
+                      forceScrollBottomRef.current = true;
+                      shouldStickToBottomRef.current = true;
+                      previousSessionRef.current = null;
+                      previousLengthRef.current = 0;
+
                       setActiveSessionId(sessionId);
-                      if (isMobile) (window as any).requestAnimationFrame?.(() => { }), setTimeout(() => { }, 0);
-                      if (isMobile) (window as any) && (document.activeElement as HTMLElement)?.blur?.();
-                      if (isMobile) (mobileMenuOpen);
+
+                      if (isMobile) {
+                        setMobileMenuOpen(false);
+                        (document.activeElement as HTMLElement)?.blur?.();
+                      }
                     }}
                     className={`rounded-2xl p-3 mb-3 cursor-pointer flex items-center gap-3 transition-all ${isActive
-                        ? 'bg-[var(--secondary)] text-white'
-                        : 'text-[var(--text-color)] hover:bg-slate-700 hover:text-white'
+                      ? "bg-[var(--secondary)] text-white"
+                      : "text-[var(--text-color)] hover:bg-slate-700 hover:text-white"
                       }`}
                   >
                     <div className="bg-[var(--card-bg)] text-[var(--text-color)] rounded-full w-10 h-10 flex items-center justify-center text-base shrink-0">
                       👤
                     </div>
+
                     <div className="flex-1 min-w-0">
                       <div
-                        className={`text-[15px] ${isActive ? 'font-semibold' : 'font-normal'} text-inherit overflow-hidden text-ellipsis whitespace-nowrap`}
+                        className={`text-[15px] ${isActive ? "font-semibold" : "font-normal"
+                          } text-inherit overflow-hidden text-ellipsis whitespace-nowrap`}
                       >
                         {client?.nombre || sessionId}
                       </div>
+
                       <div className="text-[12px] text-inherit overflow-hidden text-ellipsis whitespace-nowrap mb-1">
                         {lastMessage}
                       </div>
-                      <div className="text-[11px] text-inherit">{formatDate(lastTime)}</div>
+
+                      <div className="text-[11px] text-inherit">
+                        {formatDate(lastTime)}
+                      </div>
                     </div>
                   </div>
                 );
@@ -1014,12 +1194,9 @@ const handleSendMedia = async (attachmentToSend: File) => {
         </div>
       )}
 
-      {/* Panel Principal de Chat */}
       {(!isMobile || !mobileMenuOpen) && (
-        <div className="flex-1 flex flex-col bg-[var(--bg-color)]">
-          {/* Header del Chat */}
+        <div className="flex-1 flex min-h-0 flex-col bg-[var(--bg-color)]">
           <div className="flex items-center justify-between p-3 border-b border-[var(--border-color)]">
-            {/* Menu Mobile */}
             {isMobile && (
               <button
                 onClick={() => setMobileMenuOpen(true)}
@@ -1030,16 +1207,19 @@ const handleSendMedia = async (attachmentToSend: File) => {
               </button>
             )}
 
-            {/* Info del Cliente */}
             <div className="flex items-center gap-2 flex-1">
               <div className="bg-slate-800 text-[var(--text-color)] rounded-full w-[42px] h-[42px] flex items-center justify-center text-[22px] shadow-[0_2px_8px_rgba(0,0,0,0.4)]">
                 👤
               </div>
+
               <div className="flex-1">
                 <div className="flex items-center gap-1">
                   <h3 className="text-[var(--text-color)] text-xl font-semibold">
-                    {activeSessionId ? (clientsInfo[activeSessionId]?.nombre || activeSessionId) : 'Selecciona una conversación'}
+                    {activeSessionId
+                      ? clientsInfo[activeSessionId]?.nombre || activeSessionId
+                      : "Selecciona una conversación"}
                   </h3>
+
                   {activeSessionId && (
                     <button
                       onClick={() => setShowEditNameModal(true)}
@@ -1050,40 +1230,49 @@ const handleSendMedia = async (attachmentToSend: File) => {
                     </button>
                   )}
                 </div>
+
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-slate-400">
-                    {activeSessionId ? 'WhatsApp Chat' : 'Sin conversación activa'}
+                    {activeSessionId
+                      ? "WhatsApp Chat"
+                      : "Sin conversación activa"}
                   </span>
+
                   {activeSessionId && (
                     <span
-                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-white text-[11px] h-5 ${isBotActive ? 'bg-[#dc0b2c]' : 'bg-emerald-600'
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-white text-[11px] h-5 ${isBotActive ? "bg-[#dc0b2c]" : "bg-emerald-600"
                         }`}
                     >
-                      <span className={`i-lucide-${isBotActive ? 'bot' : 'user'} text-[14px]`} />
-                      {isBotActive ? 'Bot activo' : 'Asesor activo'}
+                      <span
+                        className={`i-lucide-${isBotActive ? "bot" : "user"
+                          } text-[14px]`}
+                      />
+
+                      {isBotActive ? "Bot activo" : "Asesor activo"}
                     </span>
                   )}
                 </div>
               </div>
             </div>
 
-            {/* Controles del Header */}
             <div className="flex gap-2">
               {activeSessionId && (
                 <>
                   <button
                     onClick={toggleChatbotStatus}
                     disabled={activationStatusLoading}
-                    title={isBotActive ? 'Pausar bot' : 'Reactivar bot'}
+                    title={isBotActive ? "Pausar bot" : "Reactivar bot"}
                     className={`inline-flex items-center justify-center rounded-lg px-3 h-10 text-white disabled:bg-gray-500 disabled:text-gray-300 ${isBotActive
-                        ? 'bg-amber-500 hover:bg-amber-600'
-                        : 'bg-emerald-600 hover:bg-emerald-700'
+                      ? "bg-amber-500 hover:bg-amber-600"
+                      : "bg-emerald-600 hover:bg-emerald-700"
                       }`}
                   >
                     {activationStatusLoading ? (
                       <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                    ) : isBotActive ? (
+                      <Pause size={18} />
                     ) : (
-                      isBotActive ? <Pause size={18} /> : <Play size={18} />
+                      <Play size={18} />
                     )}
                   </button>
 
@@ -1110,21 +1299,33 @@ const handleSendMedia = async (attachmentToSend: File) => {
             </div>
           </div>
 
-          {/* Área de Mensajes */}
-          <div ref={chatMessagesRef} className="flex-1 overflow-y-auto p-3 pt-2">
+          <div
+            ref={chatMessagesRef}
+            onScroll={handleChatScroll}
+            className="min-h-0 flex-1 overflow-y-auto p-3 pt-2"          >
             {loading || activationStatusLoading ? (
               <div className="flex items-center justify-center h-full">
                 <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/40 border-t-white" />
               </div>
             ) : !activeConversation ? (
               <div className="flex h-full flex-col items-center justify-center gap-2">
-                <p className="text-slate-400 text-lg text-center">Selecciona una conversación</p>
-                <p className="text-sm text-slate-400 text-center">Elige una conversación de la lista para ver los mensajes</p>
+                <p className="text-slate-400 text-lg text-center">
+                  Selecciona una conversación
+                </p>
+
+                <p className="text-sm text-slate-400 text-center">
+                  Elige una conversación de la lista para ver los mensajes
+                </p>
               </div>
             ) : activeConversation.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center gap-2">
-                <p className="text-slate-400 text-center">No hay mensajes en esta conversación</p>
-                <p className="text-sm text-slate-400 text-center">Los mensajes aparecerán aquí cuando el cliente escriba</p>
+                <p className="text-slate-400 text-center">
+                  No hay mensajes en esta conversación
+                </p>
+
+                <p className="text-sm text-slate-400 text-center">
+                  Los mensajes aparecerán aquí cuando el cliente escriba
+                </p>
               </div>
             ) : (
               <div className="flex flex-col gap-1.5">
@@ -1133,46 +1334,57 @@ const handleSendMedia = async (attachmentToSend: File) => {
                     Modo prueba multimedia activo
                   </div>
                 ) : null}
-                {activeConversation.map((msg: any) => {
-                  const messagePayload = normalizeMessagePayload(msg.message)
-                  const mediaUrl = getMessageMediaUrl(messagePayload)
-                  const isMediaMessage = Boolean(mediaUrl)
-                  const mediaCategory = messagePayload?.media?.kind || messagePayload?.type || "document"           
-                         const isHumanMessage = messagePayload?.type === 'human'
+
+                {activeConversation.map((msg) => {
+                  const messagePayload = normalizeMessagePayload(msg.message);
+                  const media = getMessageMedia(messagePayload);
+                  const isMediaMessage = Boolean(media);
+                  const isHumanMessage = messagePayload?.type === "human";
+                  const caption = getCleanMediaCaption(
+                    messagePayload?.content,
+                    media?.name
+                  );
 
                   return (
                     <div
                       key={msg.id}
-                      className={`flex ${isHumanMessage ? 'justify-start' : 'justify-end'}`}
+                      className={`flex ${isHumanMessage ? "justify-start" : "justify-end"
+                        }`}
                     >
                       <div
                         className={`${isHumanMessage
-                            ? 'bg-[var(--bubble-in)]'
-                            : 'bg-[var(--accent)] text-[var(--bubble-out-foreground)]'
+                          ? "bg-[var(--bubble-in)]"
+                          : "bg-[var(--accent)] text-[var(--bubble-out-foreground)]"
                           } px-3 py-2 rounded-2xl max-w-[70%] text-[14px] break-words shadow-[0_2px_8px_rgba(0,0,0,0.3)]`}
                       >
-                        {isMediaMessage ? (
+                        {isMediaMessage && media ? (
                           <div className="space-y-2">
                             <MediaBubble
-                              media={{ kind: mediaCategory, url: mediaUrl, name: typeof messagePayload?.content === 'string' ? messagePayload.content : undefined }}
-                              caption={typeof messagePayload?.content === 'string' ? messagePayload.content : undefined}
+                              media={media}
+                              caption={caption}
                               isAi={!isHumanMessage}
                               darkMode={false}
                             />
                           </div>
                         ) : (
-                          <div className="mb-1">{messagePayload?.content || ""}</div>
+                          <div className="mb-1">
+                            {messagePayload?.content || ""}
+                          </div>
                         )}
-                        <span className="block text-right opacity-70 text-[11px]">{formatTime(msg.time!)}</span>
+
+                        <span className="block text-right opacity-70 text-[11px]">
+                          {formatTime(msg.time || "")}
+                        </span>
                       </div>
                     </div>
-                  )
+                  );
                 })}
+
+                <div ref={lastMessageRef} />
               </div>
             )}
           </div>
 
-          {/* Área de Input */}
           <div className="p-3 pt-0 border-t border-[var(--border-color)]">
             {isBotActive ? (
               <div className="mt-2 flex gap-2">
@@ -1181,6 +1393,7 @@ const handleSendMedia = async (attachmentToSend: File) => {
                   placeholder="El bot está manejando esta conversación..."
                   className="w-full h-14 rounded-2xl bg-[#363636] text-white px-4 outline-none border border-slate-700"
                 />
+
                 <button
                   disabled
                   className="rounded-xl min-w-12 h-14 bg-slate-700 flex items-center justify-center"
@@ -1198,7 +1411,7 @@ const handleSendMedia = async (attachmentToSend: File) => {
                 inputMessage={inputMessage}
                 onInputChange={setInputMessage}
                 onKeyDown={(event) => {
-                  if (event.key === 'Enter' && !event.shiftKey) {
+                  if (event.key === "Enter" && !event.shiftKey) {
                     event.preventDefault();
                     handleComposerSubmit();
                   }
@@ -1214,21 +1427,25 @@ const handleSendMedia = async (attachmentToSend: File) => {
         </div>
       )}
 
-      {/* ===== Modales simples (sin librerías) ===== */}
-
-      {/* Modal: Mensaje largo como asesor */}
       {showNewMessageModal && (
         <div className="fixed inset-0 z-[2000] flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setShowNewMessageModal(false)} />
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setShowNewMessageModal(false)}
+          />
+
           <div className="relative w-full max-w-lg rounded-2xl bg-slate-900 text-white shadow-xl">
             <div className="px-4 py-3 border-b border-slate-700 flex items-center gap-2">
               <span className="i-lucide-user text-emerald-500" />
+
               <h4 className="font-semibold">Enviar mensaje como asesor</h4>
             </div>
+
             <div className="p-4">
               <p className="text-sm text-slate-400 mb-2">
                 Este mensaje se enviará directamente al WhatsApp del cliente
               </p>
+
               <textarea
                 className="w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 outline-none"
                 rows={6}
@@ -1238,17 +1455,19 @@ const handleSendMedia = async (attachmentToSend: File) => {
                 disabled={activationStatusLoading}
               />
             </div>
+
             <div className="px-4 py-3 border-t border-slate-700 flex justify-end gap-2">
               <button
                 onClick={() => {
                   setShowNewMessageModal(false);
-                  setNuevoMensaje('');
+                  setNuevoMensaje("");
                 }}
                 disabled={activationStatusLoading}
                 className="px-3 py-2 rounded-lg hover:bg-white/5"
               >
                 Cancelar
               </button>
+
               <button
                 onClick={handleSendMessage}
                 disabled={!nuevoMensaje?.trim?.() || activationStatusLoading}
@@ -1257,7 +1476,7 @@ const handleSendMedia = async (attachmentToSend: File) => {
                 {activationStatusLoading ? (
                   <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
                 ) : (
-                  'Enviar a WhatsApp'
+                  "Enviar a WhatsApp"
                 )}
               </button>
             </div>
@@ -1265,17 +1484,24 @@ const handleSendMedia = async (attachmentToSend: File) => {
         </div>
       )}
 
-      {/* Modal: Editar información del cliente */}
       {showEditNameModal && (
         <div className="fixed inset-0 z-[2000] flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setShowEditNameModal(false)} />
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setShowEditNameModal(false)}
+          />
+
           <div className="relative w-full max-w-lg rounded-2xl bg-slate-900 text-white shadow-xl">
             <div className="px-4 py-3 border-b border-slate-700">
               <h4 className="font-semibold">Editar información del cliente</h4>
             </div>
+
             <div className="p-4 space-y-3">
               <div className="space-y-1">
-                <label className="text-sm text-slate-300">Nombre del cliente</label>
+                <label className="text-sm text-slate-300">
+                  Nombre del cliente
+                </label>
+
                 <input
                   className="w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 outline-none"
                   value={editingName}
@@ -1283,8 +1509,10 @@ const handleSendMedia = async (attachmentToSend: File) => {
                   placeholder="Ingresa el nombre del cliente"
                 />
               </div>
+
               <div className="space-y-1">
                 <label className="text-sm text-slate-300">Tipo de cliente</label>
+
                 <input
                   className="w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 outline-none"
                   value={editingTipoCliente}
@@ -1292,20 +1520,27 @@ const handleSendMedia = async (attachmentToSend: File) => {
                   placeholder="Ej: Premium, Regular, Nuevo"
                 />
               </div>
+
               <div className="space-y-1">
-                <label className="text-sm text-slate-300">categoria</label>
+                <label className="text-sm text-slate-300">Categoría</label>
+
                 <input
                   className="w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 outline-none"
                   value={editingCategoria}
                   onChange={(e) => setEditingCategoria(e.target.value)}
-                  placeholder="categoria del cliente"
+                  placeholder="Categoría del cliente"
                 />
               </div>
             </div>
+
             <div className="px-4 py-3 border-t border-slate-700 flex justify-end gap-2">
-              <button onClick={() => setShowEditNameModal(false)} className="px-3 py-2 rounded-lg hover:bg-white/5">
+              <button
+                onClick={() => setShowEditNameModal(false)}
+                className="px-3 py-2 rounded-lg hover:bg-white/5"
+              >
                 Cancelar
               </button>
+
               <button
                 onClick={updateClientName}
                 disabled={!editingName?.trim?.()}
@@ -1318,17 +1553,24 @@ const handleSendMedia = async (attachmentToSend: File) => {
         </div>
       )}
 
-      {/* Modal: Nuevo Chat */}
       {showNewChatModal && (
         <div className="fixed inset-0 z-[2000] flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setShowNewChatModal(false)} />
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setShowNewChatModal(false)}
+          />
+
           <div className="relative w-full max-w-lg rounded-2xl bg-slate-900 text-white shadow-xl">
             <div className="px-4 py-3 border-b border-slate-700">
               <h4 className="font-semibold">Crear nueva conversación</h4>
             </div>
+
             <div className="p-4 space-y-3">
               <div className="space-y-1">
-                <label className="text-sm text-slate-300">Número de teléfono</label>
+                <label className="text-sm text-slate-300">
+                  Número de teléfono
+                </label>
+
                 <input
                   className="w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 outline-none"
                   value={newPhoneNumber}
@@ -1336,8 +1578,12 @@ const handleSendMedia = async (attachmentToSend: File) => {
                   placeholder="+51999999999"
                 />
               </div>
+
               <div className="space-y-1">
-                <label className="text-sm text-slate-300">Nombre del cliente</label>
+                <label className="text-sm text-slate-300">
+                  Nombre del cliente
+                </label>
+
                 <input
                   className="w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 outline-none"
                   value={newClientName}
@@ -1345,8 +1591,10 @@ const handleSendMedia = async (attachmentToSend: File) => {
                   placeholder="Nombre del cliente"
                 />
               </div>
+
               <div className="space-y-1">
                 <label className="text-sm text-slate-300">Mensaje inicial</label>
+
                 <textarea
                   rows={4}
                   className="w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 outline-none"
@@ -1356,13 +1604,22 @@ const handleSendMedia = async (attachmentToSend: File) => {
                 />
               </div>
             </div>
+
             <div className="px-4 py-3 border-t border-slate-700 flex justify-end gap-2">
-              <button onClick={() => setShowNewChatModal(false)} className="px-3 py-2 rounded-lg hover:bg-white/5">
+              <button
+                onClick={() => setShowNewChatModal(false)}
+                className="px-3 py-2 rounded-lg hover:bg-white/5"
+              >
                 Cancelar
               </button>
+
               <button
                 onClick={createNewChat}
-                disabled={!newPhoneNumber?.trim?.() || !newClientName?.trim?.() || !newClientMessage?.trim?.()}
+                disabled={
+                  !newPhoneNumber?.trim?.() ||
+                  !newClientName?.trim?.() ||
+                  !newClientMessage?.trim?.()
+                }
                 className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 disabled:opacity-60"
               >
                 Crear y Enviar
@@ -1372,19 +1629,25 @@ const handleSendMedia = async (attachmentToSend: File) => {
         </div>
       )}
 
-      {/* Modal: Recordatorio */}
       {showReminderModal && (
         <div className="fixed inset-0 z-[2000] flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setShowReminderModal(false)} />
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setShowReminderModal(false)}
+          />
+
           <div className="relative w-full max-w-md rounded-2xl bg-slate-900 text-white shadow-xl">
             <div className="px-4 py-3 border-b border-slate-700">
               <h4 className="font-semibold">Chatbot desactivado</h4>
             </div>
+
             <div className="p-4">
               <p>
-                Has desactivado el chatbot para esta conversación. Recuerda reactivarlo cuando termines de atender al cliente manualmente.
+                Has desactivado el chatbot para esta conversación. Recuerda
+                reactivarlo cuando termines de atender al cliente manualmente.
               </p>
             </div>
+
             <div className="px-4 py-3 border-t border-slate-700 flex justify-end">
               <button
                 onClick={() => setShowReminderModal(false)}
